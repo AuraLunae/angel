@@ -23,6 +23,8 @@ button,input{touch-action:manipulation}
 .shell{max-width:520px;margin:auto;padding:max(32px,env(safe-area-inset-top)) 28px 88px}
 .brand{display:flex;align-items:baseline;gap:16px;font-size:12px}
 .brand-name{font-weight:600;letter-spacing:.18em;margin-right:auto}
+.brand-sub{display:block;font-size:10px;font-weight:400;letter-spacing:.04em;line-height:1.7;color:var(--muted);margin-top:6px}
+.set-group label{display:block;font-size:11px;color:var(--muted);letter-spacing:.14em}
 #net,.theme-btn{color:var(--muted);font-size:11px;letter-spacing:.16em}
 .theme-btn{background:none;border:0;padding:4px 0;text-transform:uppercase}
 .hero{padding:88px 0 40px}
@@ -102,18 +104,26 @@ form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
 .seg button:first-child{margin-left:0}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);border-color:var(--ink);position:relative}
 .recap-mark{display:inline-block;width:3.2em;color:var(--muted);font-size:12px}
+.menu details.mrow{border-bottom:1px solid var(--line)}
+.menu details.mrow>summary{color:var(--text);font-size:14px;padding:14px 26px 14px 0;letter-spacing:.04em}
+.mrow small{color:var(--muted);margin-left:8px;font-size:12px}
+#mistakeList>.primary{margin-bottom:18px}
+#mistakeList .stat{padding:4px 0}
+#mistakeList .mrow .secondary{margin-top:14px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="shell">
-  <header class="brand"><span class="brand-name">テンシで英単語　実はブックマークなどに保存しておくと、オフラインでも普通に開けます<br>試しにネットを切ってリロードしてみてください</span><span id="net"></span><button class="theme-btn" id="theme" type="button">Dark</button></header>
+  <header class="brand"><span class="brand-name">テンシで英単語<small class="brand-sub">実はブックマークなどに保存しておくと、<br>オフラインでも普通に開けます。<br>試しにネットを切ってリロードしてみてください。</small></span><span id="net"></span><button class="theme-btn" id="theme" type="button">Dark</button></header>
   <main>
     <section id="home">
-      <div class="hero"><p class="label">TODAY</p><p class="bigdate" id="today"></p><h1>今日の5問</h1></div>
+      <div class="hero"><p class="label">TODAY</p><p class="bigdate" id="today"></p><h1 id="heroTitle">今日の5問</h1></div>
       <button class="primary" id="start" disabled>読み込み中</button>
       <p class="sync" id="sync"></p>
       <div class="menu">
+        <details id="mistakeBox"><summary>間違えた問題・おさらい<span id="mistakeSum" class="muted"></span></summary>
+          <div class="pane"><div id="mistakeList"></div></div></details>
         <details id="studyBox" open><summary>学習設定</summary>
           <div class="pane">
             <div class="set-group">
@@ -123,6 +133,15 @@ form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
                 <label>終了<input class="typing" id="rTo" type="number" min="1" max="2300" value="2300" inputmode="numeric" required></label></div>
                 <p class="mini">LEAP番号。5語以上。</p>
                 <button class="primary" type="submit">この範囲で練習を始める</button></form>
+            </div>
+            <div class="set-group">
+              <p class="label">出題形式</p>
+              <div class="seg" id="modeSeg" role="group" aria-label="出題形式"></div>
+              <p class="mini" id="modeNote"></p>
+            </div>
+            <div class="set-group">
+              <label>1回の問題数<input class="typing" id="qCountIn" type="number" min="1" max="50" value="5" inputmode="numeric"></label>
+              <p class="mini">初期値は5問。1〜50問で変えられる。</p>
             </div>
             <div class="set-group">
               <p class="label">語頭を見せる文字数（入力問題）</p>
@@ -189,34 +208,105 @@ async function loadWords(){
   const res=await fetch('data/words.json');if(!res.ok)throw new Error('単語データを読み込めません');
   words=await res.json();
   words.forEach(w=>{byId[w.wordId]=w;byWord[w.word.toLowerCase()]=w;const k=norm(w.meaning);(meaningToWords[k]=meaningToWords[k]||[]).push(w.word);});
+  genQuestions();
+}
+/* 足りない形式の問題を作る。単語ごとに同じ乱数(wordId固定)で作るので、いつ開いても同じ問題・同じ選択肢になる。 */
+const SPELLABLE=/^[A-Za-z]+([ -][A-Za-z]+)*$/;   // 綴りで答えられる表記だけ（afterward(s) や「～」を含む語は除く）
+function genQuestions(){
+  const byPos={};words.forEach(w=>{(byPos[w.pos]=byPos[w.pos]||[]).push(w);});
+  for(const w of words){
+    const hasT=w.questions.some(q=>q.type==='typing'),hasC=w.questions.some(q=>q.type!=='typing');
+    if(!hasT&&SPELLABLE.test(w.word)){
+      w.questions.push({questionId:w.wordId+'_GTYPE',type:'typing',kind:'NEW',gen:true,
+        prompt:'「'+w.meaning+'」を表す LEAP '+w.leapNo+' の見出し語を入力せよ。\n語頭「'+w.word.slice(0,2)+'」・英字'+w.word.replace(/[^A-Za-z]/g,'').length+'文字',
+        options:[],correctIndex:-1,questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'});
+    }
+    if(!hasC){
+      const r=rng(w.wordId+':gen'),asMeaning=r()<.57;                    // 既存の比率（意味を選ぶ:語を選ぶ ≒ 57:43）に合わせる
+      const key=x=>asMeaning?norm(x.meaning):norm(x.word),mine=key(w);
+      const same=(byPos[w.pos]||[]).filter(y=>y!==w),pool=same.length>=12?same:words.filter(y=>y!==w);   // 同じ品詞から選ぶ（まぎらわしくなる）
+      const bad=new Set([mine]),wrong=[];
+      for(let t=0;wrong.length<3&&t<200;t++){const y=pool[Math.floor(r()*pool.length)],k=key(y);if(!bad.has(k)){bad.add(k);wrong.push(y);}}
+      const opts=shuffle([w,...wrong],r),txt=y=>asMeaning?y.meaning:y.word;
+      w.questions.push(asMeaning
+        ?{questionId:w.wordId+'_GJA',type:'meaning_mcq',kind:'NEW',gen:true,prompt:'「'+w.word+'」の意味を選べ。',options:opts.map(txt),correctIndex:opts.indexOf(w),questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'}
+        :{questionId:w.wordId+'_GEN',type:'word_mcq',kind:'NEW',gen:true,prompt:'「'+w.meaning+'」（'+w.pos+'）を表す見出し語を選べ。\nLEAP '+w.leapNo,options:opts.map(txt),correctIndex:opts.indexOf(w),questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'});
+    }
+  }
 }
 
 /* ========== 出題 ========== */
+// 元データでは1つの単語につき問題の形式は1種類（綴り or 選択）。
+// 「選択のみ」「綴りのみ」では、元の問題が無い語に対して、起動時に自動生成した問題(gen:true)を使う。ランダムでは元の問題だけ。
+const qsFor=(w,mode)=>{
+  if(mode!=='typing'&&mode!=='choice')return w.questions.filter(q=>!q.gen);
+  const ok=q=>mode==='typing'?q.type==='typing':q.type!=='typing',orig=w.questions.filter(q=>!q.gen&&ok(q));
+  return orig.length?orig:w.questions.filter(q=>q.gen&&ok(q));
+};
+const fits=(w,mode)=>qsFor(w,mode||settings.qMode).length>0;
 async function makeSet(kind,opts={}){
-  const day=JST(Date.now()),sets=await dbAll('sets'),today=sets.filter(s=>s.day===day);
-  const id=kind==='daily'?'daily:'+day:kind+':'+day+':'+today.length;
+  const day=JST(Date.now()),sets=await dbAll('sets'),dayAll=sets.filter(s=>s.day===day);
+  const id=kind==='daily'?'daily:'+day:kind+':'+day+':'+dayAll.length,today=dayAll.filter(s=>s.id!==id); // 作り直す今日のセット自身は除く
+  const mode=settings.qMode,N=settings.qCount,revMax=Math.min(N,Math.max(2,Math.round(N*.4)));
   const r=rng(id+':'+device);
   const answers=await dbAll('answers'),last=new Map();
   answers.forEach(a=>{const p=last.get(a.wordId);if(!p||a.at>p.at)last.set(a.wordId,a);});
-  const reviews=(await dbAll('review')).filter(x=>x.status==='ACTIVE');
+  const reviews=(await dbAll('review')).filter(x=>x.status==='ACTIVE'&&byId[x.wordId]&&fits(byId[x.wordId]));
   let rev=[];
-  if(kind==='daily'||kind==='extra')rev=reviews.filter(x=>x.nextDate<=day).sort((a,b)=>a.nextDate<b.nextDate?-1:1).slice(0,2);
-  if(kind==='early')rev=reviews.filter(x=>x.nextDate>day).sort((a,b)=>a.nextDate<b.nextDate?-1:1).slice(0,2);
+  if(kind==='daily'||kind==='extra')rev=reviews.filter(x=>x.nextDate<=day).sort((a,b)=>a.nextDate<b.nextDate?-1:1).slice(0,revMax);
+  if(kind==='early')rev=reviews.filter(x=>x.nextDate>day).sort((a,b)=>a.nextDate<b.nextDate?-1:1).slice(0,revMax);
   const revIds=new Set(rev.map(x=>x.wordId)),used=new Set(today.flatMap(s=>s.items.map(i=>i.wordId)));
   const lo=opts.from||1,hi=opts.to||2300;
-  const pool=words.filter(w=>w.leapNo>=lo&&w.leapNo<=hi&&!revIds.has(w.wordId));
+  const pool=words.filter(w=>w.leapNo>=lo&&w.leapNo<=hi&&!revIds.has(w.wordId)&&fits(w));
   const fresh=shuffle(pool.filter(w=>!last.has(w.wordId)&&!used.has(w.wordId)),r);
   const stale=pool.filter(w=>last.has(w.wordId)&&!used.has(w.wordId)).sort((a,b)=>last.get(a.wordId).at-last.get(b.wordId).at);
   const again=shuffle(pool.filter(w=>used.has(w.wordId)),r);
-  const picks=[...fresh,...stale,...again].slice(0,5-rev.length);
+  const picks=[...fresh,...stale,...again].slice(0,N-rev.length);
   const mk=(w,kind)=>{
-    let qs=w.questions;
-    if(kind==='REVIEW'&&qs.some(q=>q.type==='typing'))qs=qs.filter(q=>q.type==='typing'); // おさらいは入力問題を優先
+    let qs=qsFor(w,mode);if(!qs.length)qs=w.questions;
+    if(kind==='REVIEW'&&mode==='mixed'&&qs.some(q=>q.type==='typing'))qs=qs.filter(q=>q.type==='typing'); // おさらいは入力問題を優先
     const q=qs[Math.floor(r()*qs.length)],p=last.get(w.wordId);
     return {wordId:w.wordId,questionId:q.questionId,kind,prev:kind==='REVIEW'&&p?{day:p.day,correct:p.correct,answer:p.selected}:null,ans:null};
   };
   const items=shuffle([...rev.map(x=>mk(byId[x.wordId],'REVIEW')),...picks.map(w=>mk(w,'NEW'))],r).map((it,i)=>({slotNo:i+1,...it}));
-  const set={id,kind,day,range:kind==='range'?{from:lo,to:hi}:null,items,created:Date.now()};
+  if(!items.length)throw new Error('この条件で出せる問題がありません。範囲か出題形式を変えてください。');
+  const set={id,kind,day,range:kind==='range'?{from:lo,to:hi}:null,items,sig:mode+':'+N,created:Date.now()};
+  await commit([['sets',set]]);return set;
+}
+/* ========== 間違えた問題リスト ＝ おさらい(review) ==========
+   間違えた語・おさらいに回した語は、どちらも review に ACTIVE で入る。この一覧がそのまま「間違えた問題リスト」。
+   削除すると status を REMOVED にする（バックアップを復元しても蘇らないよう、記録は残す）。 */
+async function getMistakes(){
+  const [rvs,ans]=await Promise.all([dbAll('review'),dbAll('answers')]),wrong=new Map();
+  for(const a of ans){
+    if(a.correct)continue;
+    let x=wrong.get(a.wordId);if(!x){x={count:0,last:a};wrong.set(a.wordId,x);}
+    x.count++;if(a.at>x.last.at)x.last=a;
+  }
+  return rvs.filter(r=>r.status==='ACTIVE'&&byId[r.wordId]).map(r=>{const x=wrong.get(r.wordId);return {wordId:r.wordId,rv:r,count:x?x.count:0,last:x?x.last:null};})
+    .sort((a,b)=>a.rv.nextDate<b.rv.nextDate?-1:a.rv.nextDate>b.rv.nextDate?1:a.wordId<b.wordId?-1:1); // 次のおさらいが近い順
+}
+async function removeReview(wordId){
+  const prev=await dbGet('review',wordId);
+  await commit([['review',{wordId,stage:prev?prev.stage:0,status:'REMOVED',nextDate:null,updatedAt:Date.now(),dirty:1}]]);
+  return prev;   // 取り消し用
+}
+async function restoreReview(prev){if(prev)await commit([['review',{...prev,updatedAt:Date.now(),dirty:1}]]);}
+
+async function makeMistakeSet(){
+  const list=(await getMistakes()).filter(x=>fits(byId[x.wordId]));
+  if(!list.length)throw new Error('復習できる問題がありません。');
+  const mode=settings.qMode,N=settings.qCount;
+  const day=JST(Date.now()),today=(await dbAll('sets')).filter(s=>s.day===day),id='mistake:'+day+':'+today.length,r=rng(id+':'+device);
+  const used=new Set(today.filter(s=>s.kind==='mistake').flatMap(s=>s.items.map(i=>i.wordId))); // 今日まだ復習していない語を先に
+  const picks=[...list.filter(x=>!used.has(x.wordId)),...list.filter(x=>used.has(x.wordId))].slice(0,N);
+  const items=picks.map((x,i)=>{
+    const w=byId[x.wordId],qs=qsFor(w,mode),base=qs.length?qs:w.questions;
+    const q=(x.last&&base.find(q=>q.questionId===x.last.questionId))||base[Math.floor(r()*base.length)]; // 間違えた時と同じ問題
+    return {slotNo:i+1,wordId:w.wordId,questionId:q.questionId,kind:'REVIEW',   // おさらいと同じ扱い：正解すると次の間隔へ進む
+      prev:x.last?{day:x.last.day,correct:false,answer:x.last.selected}:null,ans:null};
+  });
+  const set={id,kind:'mistake',day,range:null,items,sig:mode+':'+N,created:Date.now()};
   await commit([['sets',set]]);return set;
 }
 const isDone=s=>s.items.every(i=>i.ans);
@@ -262,8 +352,8 @@ function show(name){stopSpeech();['home','play','result'].forEach(id=>{$(id).hid
 function focusHeading(c){const h=c.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true});}window.scrollTo(0,0);}
 function progress(set){
   const n=set.items.filter(i=>i.ans).length,c=node('div'),line=node('div',undefined,'topline');
-  line.append(node('span',set.day+(set.range?' ／ LEAP '+set.range.from+'〜'+set.range.to:'')+' の5問'),node('span',n+' / 5 回答済み'));
-  const bar=node('div',undefined,'progress'),fill=node('span');fill.style.width=(n/5*100)+'%';bar.append(fill);c.append(line,bar);return c;
+  line.append(node('span',set.day+(set.range?' ／ LEAP '+set.range.from+'〜'+set.range.to:'')+(set.kind==='mistake'?' の復習':' の'+set.items.length+'問')),node('span',n+' / '+set.items.length+' 回答済み'));
+  const bar=node('div',undefined,'progress'),fill=node('span');fill.style.width=(n/set.items.length*100)+'%';bar.append(fill);c.append(line,bar);return c;
 }
 function reviewText(rv,kind){
   if(!rv)return '復習予定なし';
@@ -321,13 +411,13 @@ function play(set){
 }
 function renderQuestion(set,it){
   show('play');const area=$('play'),w=byId[it.wordId],q=qOf(it);
-  area.replaceChildren(...(it.kind==='REVIEW'?[reviewBanner(w)]:[]),progress(set));
+  area.replaceChildren(...banners(set,it,w),progress(set));
   const head=node('div',undefined,'qhead');
-  head.append(node('span',String(it.slotNo).padStart(2,'0')+' / 05'),
-    node('span',(it.kind==='REVIEW'?'おさらい　':'')+({meaning_mcq:'日本語を選択',word_mcq:'英語を選択',typing:'英語を入力'}[q.type]||'選択問題'),'chip'));
+  head.append(node('span',String(it.slotNo).padStart(2,'0')+' / '+String(set.items.length).padStart(2,'0')),
+    node('span',(it.kind==='REVIEW'?(set.kind==='mistake'?'復習　':'おさらい　'):'')+({meaning_mcq:'日本語を選択',word_mcq:'英語を選択',typing:'英語を入力'}[q.type]||'選択問題'),'chip'));
   area.append(head);
   if(it.kind==='REVIEW'){
-    const rv=node('div',undefined,'card revenge');rv.append(node('h2','おさらい'),node('p','LEAP '+w.leapNo+' をもう一度。'));
+    const rv=node('div',undefined,'card revenge');rv.append(node('h2',set.kind==='mistake'?'間違えた問題の復習':'おさらい'),node('p','LEAP '+w.leapNo+' をもう一度。'));
     if(it.prev&&it.prev.correct===false)rv.append(node('p','前回の答え（'+it.prev.day+'）：'+it.prev.answer+'（不正解）','mini'));
     else if(it.prev)rv.append(node('p','前回は正解','mini'));
     area.append(rv);
@@ -358,29 +448,40 @@ function renderQuestion(set,it){
 }
 function renderFeedback(set,it){
   show('play');const area=$('play'),w=byId[it.wordId],q=qOf(it),a=it.ans;
-  area.replaceChildren(...(it.kind==='REVIEW'?[reviewBanner(w)]:[]),progress(set));
+  area.replaceChildren(...banners(set,it,w),progress(set));
   const card=node('div',undefined,'card');
   card.append(node('div','LEAP '+w.leapNo+' / '+w.word,'eyebrow'),node('h2',a.correct?'正解':'不正解','feedback-title '+(a.correct?'good':'bad')));
   const box=node('div',undefined,'answer-box');box.append(node('p','あなたの答え：'+a.selected));
   const c=node('p','正解：');c.append(node('strong',q.type==='typing'?w.word:q.options[q.correctIndex]));box.append(c);
   const g=glossBlock(w,q,a);if(g)box.append(g);
   card.append(box,learningBlock(w),node('div',reviewText(a.review,it.kind),'review-note'));
-  if(a.correct){
+  if(a.correct&&set.kind!=='mistake'){
     const sr=node('button','偶然の正解なので、おさらいに回す','secondary'),msg=node('p','','mini');sr.type='button';sr.style.whiteSpace='pre-line';
     sr.addEventListener('click',async()=>{sr.disabled=true;try{const d=await selfReview(set,it.slotNo);msg.textContent='追加しました。次のおさらい　'+d;sr.textContent='追加済み';}catch{msg.textContent='保存できませんでした。';sr.disabled=false;}});
     card.append(sr,msg);
   }
+  if(set.kind==='mistake'&&a.correct&&a.review&&a.review.status==='ACTIVE'){ // 復習モードで正解したら、この語をリストから外せる（もう一度押すと取り消し）
+    const rm=node('button','復習リストから削除','secondary'),rmsg=node('p','','mini');rm.type='button';rmsg.setAttribute('role','status');
+    let prev=null,removed=false;
+    rm.addEventListener('click',async()=>{rm.disabled=true;
+      try{
+        if(!removed){prev=await removeReview(it.wordId);removed=true;rm.textContent='削除を取り消す';rmsg.textContent='復習リストから削除しました。';}
+        else{await restoreReview(prev);removed=false;rm.textContent='復習リストから削除';rmsg.textContent='リストに戻しました。';}
+      }catch{rmsg.textContent='保存できませんでした。';}
+      rm.disabled=false;});
+    card.append(rm,rmsg);
+  }
   area.append(card);
-  const next=node('button',isDone(set)?'本日の結果を見る':'次の問題へ','primary');next.addEventListener('click',()=>play(set));area.append(next);
+  const next=node('button',isDone(set)?(set.kind==='mistake'?'結果を見る':'本日の結果を見る'):'次の問題へ','primary');next.addEventListener('click',()=>play(set));area.append(next);
   focusHeading(area);
 }
 function renderResult(set){
   show('result');const area=$('result');area.replaceChildren();
   const fb=set.items.map(it=>({it,w:byId[it.wordId],a:it.ans})),ok=fb.filter(x=>x.a.correct).length;
   const head=node('div',undefined,'result-head');
-  head.append(node('h1',set.day+'　'+(set.range?'範囲練習':set.kind==='daily'?'今日の5問':'追加の5問')));
-  const sc=node('div',undefined,'score');sc.append(document.createTextNode(ok+' '),node('small','/ 5 正解'));
-  head.append(sc,node('p',''+Math.round(ok/5*100)+'%','muted'));area.append(head);
+  head.append(node('h1',set.day+'　'+(set.range?'範囲練習':set.kind==='mistake'?'間違えた問題の復習':set.kind==='daily'?'今日の'+set.items.length+'問':'追加の'+set.items.length+'問')));
+  const sc=node('div',undefined,'score');sc.append(document.createTextNode(ok+' '),node('small','/ '+set.items.length+' 正解'));
+  head.append(sc,node('p',''+Math.round(ok/set.items.length*100)+'%','muted'));area.append(head);
   if(window.AKUMA_SYNC&&AKUMA_SYNC.state.enabled){ // 同期が有効なら、5問終わった結果画面に順位と1つ上との差を出す（オフライン時は復帰後に自動表示）
     const rk=node('div',undefined,'card result-card'),rb=node('div');rk.append(node('h2','順位'));
     rb.id='resultRank';rb.setAttribute('role','status');rk.append(rb);area.append(rk);showRankInto(rb);
@@ -395,12 +496,18 @@ function renderResult(set){
   if(!rl.length)rv.append(node('p','なし'));
   else{const ul=node('ul',undefined,'review-list');rl.forEach(x=>{const li=node('li');li.append(node('span',x.w.word),node('time',x.a.review.status==='MASTERED'?'習得済み':x.a.review.nextDate));ul.append(li);});rv.append(ul);}
   area.append(rv);
-  const rc=node('div',undefined,'card result-card');rc.append(node('h2','この5問の解説を見返す'));
+  const rc=node('div',undefined,'card result-card');rc.append(node('h2',set.kind==='mistake'?'この復習の解説を見返す':'この'+set.items.length+'問の解説を見返す'));
   fb.forEach(x=>{const d=node('details');d.append(node('summary',(x.a.correct?'正解　':'不正解　')+x.w.word+'　'+x.w.meaning),learningBlock(x.w));rc.append(d);});area.append(rc);
-  const more=node('button',set.range?'同じ範囲でもう5問':'さらに進む','primary');more.type='button';
-  more.addEventListener('click',()=>begin(set.range?'range':'extra',set.range||{}));area.append(more);
-  const early=node('button','おさらいを先取りして、もう5問','secondary');early.type='button';early.style.whiteSpace='pre-line';
-  early.addEventListener('click',()=>begin('early'));area.append(early);
+  if(set.kind==='mistake'){
+    const more=node('button','続けて復習する','primary'),left=node('p','','mini');more.type='button';more.hidden=true;
+    more.addEventListener('click',()=>begin('mistake'));area.append(left,more);
+    getMistakes().then(l=>{if(l.length){more.textContent='続けて復習する（リストに残り '+l.length+' 語）';more.hidden=false;}else left.textContent='復習リストは空になりました。';}).catch(()=>{});
+  }else{
+    const more=node('button',set.range?'同じ範囲でもう'+settings.qCount+'問':'さらに進む','primary');more.type='button';
+    more.addEventListener('click',()=>begin(set.range?'range':'extra',set.range||{}));area.append(more);
+    const early=node('button','おさらいを先取りして、もう'+settings.qCount+'問','secondary');early.type='button';early.style.whiteSpace='pre-line';
+    early.addEventListener('click',()=>begin('early'));area.append(early);
+  }
   const back=node('button','トップに戻る','secondary');back.addEventListener('click',goHome);area.append(back);focusHeading(area);
 }
 
@@ -427,17 +534,35 @@ async function showRankInto(out){
 
 /* ========== 設定（すべて端末に保存。毎回上書き） ========== */
 const HINT_MAX=5;
-let settings={hintLen:2,theme:'light'};
+const MODES=['mixed','choice','typing'],QMAX=50;
+let settings={hintLen:2,theme:'light',qMode:'mixed',qCount:5};
 async function loadSettings(){
   let st=null;try{st=await dbMeta('settings');}catch{}
   if(st&&typeof st==='object'){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
+    if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(Number.isInteger(st.qCount)&&st.qCount>=1&&st.qCount<=QMAX)settings.qCount=st.qCount;
     if(st.theme==='dark'||st.theme==='light')settings.theme=st.theme;
     applyTheme(settings.theme);
   }else{settings.theme=document.documentElement.dataset.theme==='dark'?'dark':'light';}
   try{localStorage.setItem('akuma_theme',settings.theme);}catch{} // 起動直後のちらつき防止用に、テーマだけlocalStorageにも写す
 }
-function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,savedAt:Date.now()}).catch(()=>{});}
+function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,qCount:settings.qCount,savedAt:Date.now()}).catch(()=>{});}
+const MODE_LABEL={mixed:'ランダム',choice:'選択のみ',typing:'綴りのみ'};
+function renderModeSeg(){
+  const seg=$('modeSeg');if(!seg)return;seg.replaceChildren();
+  MODES.forEach(m=>{const b=node('button',MODE_LABEL[m]);b.type='button';b.setAttribute('aria-pressed',String(settings.qMode===m));
+    b.addEventListener('click',()=>{settings.qMode=m;saveSettings();renderModeSeg();renderMistakes();});seg.append(b);});
+  const nt=words.filter(w=>fits(w,'typing')).length,nc=words.filter(w=>fits(w,'choice')).length;
+  $('modeNote').textContent=settings.qMode==='mixed'?'選択問題と綴り問題がまざって出る。':
+    (words.length?(settings.qMode==='choice'?'全 '+nc+' 語が選択問題で出る。':nt+' 語が綴り問題で出る（記号を含む '+(words.length-nt)+' 語は除く）。')+'元は片方の形式しかない語も、自動で問題を作って出す。':'');
+}
+function renderHero(){$('heroTitle').textContent='今日の'+settings.qCount+'問';}
+function syncCountInput(){$('qCountIn').value=settings.qCount;}
+function bindCount(){
+  const inp=$('qCountIn');syncCountInput();
+  inp.addEventListener('input',()=>{const v=+inp.value;if(inp.value!==''&&Number.isInteger(v)&&v>=1&&v<=QMAX){settings.qCount=v;saveSettings();renderHero();renderMistakes();}});
+  inp.addEventListener('change',syncCountInput);inp.addEventListener('blur',syncCountInput);   // 範囲外・空欄は直前の有効な値に戻す
+}
 function renderHintSeg(){
   const seg=$('hintSeg');if(!seg)return;seg.replaceChildren();
   for(let i=0;i<=HINT_MAX;i++){
@@ -454,6 +579,8 @@ function typingPrompt(q,w){
   return m[1].replace(/\n+$/,'')+'\n'+(n>0?'語頭「'+w.word.slice(0,n)+'」・':'')+'英字'+m[2]+'文字';
 }
 const reviewBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','おさらい'),node('span','LEAP '+w.leapNo));return b;};
+const mistakeBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','間違えた問題の復習'),node('span','LEAP '+w.leapNo));return b;};
+const banners=(set,it,w)=>it.kind!=='REVIEW'?[]:set.kind==='mistake'?[mistakeBanner(w)]:[reviewBanner(w)];
 
 /* ========== バックアップの書き出し・復元 ========== */
 async function importBackup(file){
@@ -461,7 +588,7 @@ async function importBackup(file){
   let j;try{j=JSON.parse(await file.text());}catch{throw new Error('バックアップファイルを読み込めません（JSONではありません）。');}
   if(!j||!Array.isArray(j.answers)||!Array.isArray(j.review))throw new Error('このアプリのバックアップではありません。');
   const okA=a=>a&&typeof a.answerId==='string'&&a.answerId.length>0&&a.answerId.length<=80&&/^W\d{4}$/.test(a.wordId)&&/^\d{4}-\d{2}-\d{2}$/.test(a.day)&&Number.isFinite(a.at)&&typeof a.correct==='boolean';
-  const okR=r=>r&&/^W\d{4}$/.test(r.wordId)&&Number.isInteger(r.stage)&&r.stage>=0&&r.stage<=4&&(r.status==='ACTIVE'||r.status==='MASTERED');
+  const okR=r=>r&&/^W\d{4}$/.test(r.wordId)&&Number.isInteger(r.stage)&&r.stage>=0&&r.stage<=4&&(r.status==='ACTIVE'||r.status==='MASTERED'||r.status==='REMOVED');
   const haveA=new Set((await dbAll('answers')).map(a=>a.answerId));
   const haveR=new Map((await dbAll('review')).map(r=>[r.wordId,r]));
   const writes=[];let na=0,nr=0;
@@ -482,8 +609,9 @@ async function importBackup(file){
   const st=j.settings;
   if(st&&typeof st==='object'){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
+    if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(Number.isInteger(st.qCount)&&st.qCount>=1&&st.qCount<=QMAX)settings.qCount=st.qCount;
     if(st.theme==='dark'||st.theme==='light'){settings.theme=st.theme;applyTheme(st.theme);try{localStorage.setItem('akuma_theme',st.theme);}catch{}}
-    await saveSettings();renderHintSeg();
+    await saveSettings();renderHintSeg();renderModeSeg();syncCountInput();renderHero();
   }
   if(window.AKUMA_SYNC)AKUMA_SYNC.syncNow();   // 復元した回答の日別数もサーバーへ反映
   return {na,nr};
@@ -496,19 +624,51 @@ async function begin(kind,opts){
     if(kind==='daily'){
       const active=await dbMeta('active'),a=active&&await dbGet('sets',active);
       set=a&&!isDone(a)&&a.day===JST(Date.now())?a:(await dbGet('sets','daily:'+JST(Date.now())))||await makeSet('daily');
-    }else set=await makeSet(kind,opts);
+      if(set.kind==='daily'&&set.items.every(i=>!i.ans)&&set.sig!==settings.qMode+':'+settings.qCount)set=await makeSet('daily'); // 設定を変えたら、未回答の今日の問題は作り直す
+    }else if(kind==='mistake')set=await makeMistakeSet();
+    else set=await makeSet(kind,opts);
     await dbMeta('active',set.id);
     play(set);
   }catch(e){setError(e.message||'開始できませんでした。');}
 }
 function setToday(){const d=new Date(Date.now()+32400000);$('today').textContent=String(d.getUTCMonth()+1).padStart(2,'0')+'.'+String(d.getUTCDate()).padStart(2,'0');}
-async function goHome(){setToday();show('home');refreshSync();updateStart();}
+async function goHome(){setToday();show('home');refreshSync();updateStart();renderMistakes();}
 async function updateStart(){
   const b=$('start'),active=await dbMeta('active'),s=active&&await dbGet('sets',active);
   const open=s&&!isDone(s)&&s.day===JST(Date.now());
   const daily=await dbGet('sets','daily:'+JST(Date.now()));
   b.disabled=false;b.textContent=open?'続きから':(daily&&isDone(daily)?'今日の結果':'始める');
   b.onclick=()=>open?begin('daily'):(daily&&isDone(daily)?renderResult(daily):begin('daily'));
+}
+let mistakeShown=30;
+async function renderMistakes(){
+  let list;try{list=await getMistakes();}catch{return;}
+  const box=$('mistakeList');
+  $('mistakeSum').textContent=list.length?'　'+list.length+'語':'';
+  box.replaceChildren();
+  if(!list.length){box.append(node('p','間違えた問題はありません。間違えると、ここに溜まり、おさらいとして戻ってくる。','mini'));return;}
+  const can=list.filter(x=>fits(byId[x.wordId])).length;
+  if(can){const go=node('button','間違えた問題を復習する（'+Math.min(settings.qCount,can)+'問）','primary');go.type='button';go.addEventListener('click',()=>begin('mistake'));box.append(go);}
+  else box.append(node('p','いまの出題形式では復習できる語がありません。','mini'));
+  const rows=node('div');box.append(rows);
+  const drop=wordId=>async()=>{
+    try{await removeReview(wordId);}catch{return setError('保存できませんでした。');}
+    renderMistakes();   // 件数・一覧を作り直す
+  };
+  list.slice(0,mistakeShown).forEach(x=>{
+    const w=byId[x.wordId],row=node('details',undefined,'mrow'),sm=node('summary',w.word);sm.append(node('small',w.meaning));row.append(sm);
+    row.addEventListener('toggle',()=>{ // 中身は開いた時に作る（件数が多くても軽く）
+      if(!row.open||row.dataset.built)return;row.dataset.built='1';
+      const info=node('div');
+      info.append(statRow('LEAP',String(w.leapNo)),statRow('次のおさらい',x.rv.nextDate),statRow('問題の形式',(w.questions.find(q=>!q.gen)||{}).type==='typing'?'綴り':'選択'));
+      if(x.last)info.append(statRow('間違えた回数',x.count+'回'),statRow('最後に間違えた日',x.last.day),statRow('そのときの答え',x.last.selected||'—'));
+      else info.append(statRow('きっかけ','偶然の正解からおさらいに追加'));
+      const rm=node('button','復習リストから削除','secondary');rm.type='button';rm.addEventListener('click',drop(x.wordId));
+      row.append(info,learningBlock(w),rm);
+    });
+    rows.append(row);
+  });
+  if(list.length>mistakeShown){const more=node('button','さらに表示（残り '+(list.length-mistakeShown)+' 語）','secondary');more.type='button';more.addEventListener('click',()=>{mistakeShown+=30;renderMistakes();});box.append(more);}
 }
 async function refreshSync(){
   const S=window.AKUMA_SYNC;let t='';
@@ -537,7 +697,7 @@ async function renderHistory(){
   imp.addEventListener('click',()=>fi.click());
   fi.addEventListener('change',async()=>{const f=fi.files&&fi.files[0];fi.value='';if(!f)return;
     msg.textContent='復元中…';
-    try{const r=await importBackup(f);await renderHistory();const m=$('hist').querySelector('p[role=status]');if(m)m.textContent='復元しました：回答 '+r.na+'件、おさらい '+r.nr+'語を追加・更新';refreshSync();}
+    try{const r=await importBackup(f);await renderHistory();renderMistakes();const m=$('hist').querySelector('p[role=status]');if(m)m.textContent='復元しました：回答 '+r.na+'件、おさらい '+r.nr+'語を追加・更新';refreshSync();}
     catch(e){msg.textContent=e.message||'復元できませんでした。';}});
   box.append(ex,imp,fi,msg);
 }
@@ -564,8 +724,8 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
     if(!window.indexedDB)throw new Error('このブラウザでは端末内保存（IndexedDB）を使えません。');
     device=await dbMeta('device');if(!device){device=uuid();await dbMeta('device',device);}
     try{const lr=await dbMeta('lastRange');if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){$('rFrom').value=lr.from;$('rTo').value=lr.to;}}catch{} // 前回選んだ範囲を復元
-    await loadSettings();renderHintSeg();
-    await loadWords();await updateStart();refreshSync();
+    await loadSettings();renderHintSeg();renderModeSeg();bindCount();renderHero();
+    await loadWords();renderModeSeg();await updateStart();refreshSync();renderMistakes();
     if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
   }catch(e){$('start').textContent='開始できません';setError(e.message||'起動に失敗しました。');}
 })();
