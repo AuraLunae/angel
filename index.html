@@ -100,6 +100,8 @@ form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
 .review-banner+div>.topline{margin-top:20px}
 #rank .label,#resultRank .label{margin:18px 0 4px}#rank>.label:first-child,#resultRank>.label:first-child,#rank>div:first-child .label,#resultRank>div:first-child .label{margin-top:4px}
 .seg{display:flex;margin:10px 0 8px}
+select.sel{width:100%;background:none;border:0;border-bottom:1px solid var(--text);border-radius:0;color:var(--text);padding:10px 0;margin:6px 0 4px;font:inherit;font-size:14px}
+select.sel:disabled{color:var(--muted);border-bottom-color:var(--line)}
 .seg button{flex:1;background:none;border:1px solid var(--line);margin-left:-1px;border-radius:0;padding:10px 0;font-size:14px;letter-spacing:.08em;min-height:44px}
 .seg button:first-child{margin-left:0}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);border-color:var(--ink);position:relative}
@@ -147,6 +149,14 @@ form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
               <p class="label">語頭を見せる文字数（入力問題）</p>
               <div class="seg" id="hintSeg" role="group" aria-label="語頭を見せる文字数"></div>
               <p class="mini" id="hintNote"></p>
+            </div>
+            <div class="set-group">
+              <p class="label">読み上げ</p>
+              <div class="seg" id="ttsSeg" role="group" aria-label="読み上げの速さ"></div>
+              <select class="sel" id="ttsVoice" aria-label="読み上げの声"></select>
+              <p class="mini" id="ttsNote"></p>
+              <div class="audio-controls"><button class="secondary" id="ttsTest" type="button">テスト再生</button></div>
+              <p class="mini" id="ttsMsg" role="status"></p>
             </div>
             <p class="mini">範囲と文字数は、この端末に保存される。</p>
           </div>
@@ -361,16 +371,97 @@ function reviewText(rv,kind){
   return '次のおさらい　'+rv.nextDate;
 }
 
-/* ========== 音声（再生ボタンを押した時だけ） ========== */
+/* ========== 音声（Web Speech API / 再生ボタンを押した時だけ） ==========
+   つまずきやすい点への対策：
+   ・声の一覧は読み込みが遅れる（最初は空）→ voiceschanged と再取得で拾う
+   ・cancel() の直後に speak() すると Chrome で無視される → 再生中のときだけ少し待ってから話す
+   ・発話オブジェクトが回収されると onend が来ない → 参照を保持
+   ・始まらないまま固まる/音声が無い → 一定時間で検知してメッセージを出す */
+const TTS={ok:('speechSynthesis' in window)&&('SpeechSynthesisUtterance' in window),voices:[],cur:null,watch:null,seq:0,onVoices:[]};
+const TTS_RATES=[{v:.7,t:'ゆっくり'},{v:.86,t:'ふつう'},{v:1,t:'はやい'}];
+function ttsLoadVoices(){
+  if(!TTS.ok)return;
+  let vs=[];try{vs=speechSynthesis.getVoices()||[];}catch{}
+  const en=vs.filter(v=>/^en([-_]|$)/i.test(v.lang));
+  if(en.length!==TTS.voices.length||en.some((v,i)=>v.voiceURI!==TTS.voices[i].voiceURI)){TTS.voices=en;TTS.onVoices.forEach(f=>f());}
+}
+if(TTS.ok){
+  ttsLoadVoices();
+  try{speechSynthesis.addEventListener('voiceschanged',ttsLoadVoices);}catch{speechSynthesis.onvoiceschanged=ttsLoadVoices;}
+  let tries=0;const iv=setInterval(()=>{ttsLoadVoices();if(TTS.voices.length||++tries>20)clearInterval(iv);},300);   // voiceschanged が来ない端末向け
+}
+// 自動選択：米国英語を優先、聞き取りやすい声・端末内の声（オフラインで使える）を優先、macOSのおもしろ声は避ける
+function pickVoice(){
+  const vs=TTS.voices;if(!vs.length)return null;
+  if(settings.ttsVoice){const v=vs.find(x=>x.voiceURI===settings.ttsVoice);if(v)return v;}
+  const score=v=>{
+    const l=v.lang.replace('_','-').toLowerCase();let s=0;
+    s+=l==='en-us'?50:l==='en-gb'?25:10;
+    if(/google us english|samantha|aria|jenny|ava|allison|nicky|siri|natural|premium|enhanced/i.test(v.name))s+=20;
+    if(v.localService)s+=15;
+    if(/compact|novelty|bad news|bubbles|cellos|zarvox|whisper|trinoids|hysterical|organ|boing|bells|albert|junior|fred|ralph|good news|jester|superstar/i.test(v.name))s-=80;
+    return s;};
+  return [...vs].sort((a,b)=>score(b)-score(a))[0];
+}
+const ttsClean=t=>String(t).replace(/～/g,'').replace(/\(([^)]*)\)/g,'$1').replace(/\s+/g,' ').trim();   // afterward(s) → afterwards
 let speechMsg=null;
-function stopSpeech(){try{speechSynthesis.cancel();}catch{}if(speechMsg){speechMsg.textContent='';speechMsg=null;}}
+function stopSpeech(){
+  TTS.seq++;clearTimeout(TTS.watch);
+  if(TTS.ok){try{speechSynthesis.cancel();}catch{}}
+  if(speechMsg){speechMsg.textContent='';speechMsg=null;}
+}
 function speak(text,msg){
-  stopSpeech();
-  if(!('speechSynthesis' in window)){msg.textContent='この端末では読み上げを使えないよ。';return;}
-  const u=new SpeechSynthesisUtterance(String(text).replace(/～/g,''));u.lang='en-US';u.rate=.86;
-  const v=speechSynthesis.getVoices().find(x=>/^en[-_]US$/i.test(x.lang));if(v)u.voice=v;
-  u.onend=()=>{msg.textContent='';};u.onerror=()=>{msg.textContent='音声を再生できなかったよ。もう一度押してね。';};
-  speechMsg=msg;msg.textContent='再生中…';speechSynthesis.speak(u);
+  if(!TTS.ok){msg.textContent='このブラウザでは読み上げを使えません。SafariやChromeで開いてください。';return;}
+  const my=++TTS.seq;clearTimeout(TTS.watch);
+  if(speechMsg&&speechMsg!==msg)speechMsg.textContent='';
+  speechMsg=msg;msg.textContent='準備中…';
+  const start=()=>{
+    if(my!==TTS.seq)return;   // 待っている間に別の操作があった
+    const u=new SpeechSynthesisUtterance(ttsClean(text));
+    const v=pickVoice();if(v){u.voice=v;u.lang=v.lang;}else u.lang='en-US';
+    u.rate=settings.ttsRate;u.pitch=1;u.volume=1;
+    let started=false,done=false;
+    const finish=m=>{if(done)return;done=true;clearTimeout(TTS.watch);if(my===TTS.seq){msg.textContent=m||'';if(speechMsg===msg)speechMsg=null;}};
+    u.onstart=()=>{started=true;if(my===TTS.seq)msg.textContent='再生中…';};
+    u.onend=()=>finish('');
+    u.onerror=e=>{
+      const er=e&&e.error;
+      if(er==='canceled'||er==='interrupted')return finish('');
+      finish(er==='not-allowed'?'音声がブロックされました。もう一度ボタンを押してください。':
+        '音声を再生できませんでした。端末の音量と、英語の音声が入っているか確認してください。');
+    };
+    TTS.cur=u;   // 回収されないよう参照を保持
+    try{speechSynthesis.speak(u);}catch{return finish('音声を再生できませんでした。');}
+    TTS.watch=setTimeout(()=>{   // 5秒たっても始まらない＝音声が無い/ブロックされている/キューが固まっている
+      if(started||done)return;
+      finish(TTS.voices.length?'音声が始まりませんでした。もう一度押してください。':'英語の音声が見つかりません。端末の設定で英語（米国）の音声を追加してください。');
+      try{speechSynthesis.cancel();}catch{}   // 先にメッセージを出してから、固まったキューを空にする（cancelの中断イベントで上書きされないように）
+    },5000);
+  };
+  let busy=false;try{busy=speechSynthesis.speaking||speechSynthesis.pending;}catch{}
+  if(busy){try{speechSynthesis.cancel();}catch{}setTimeout(start,90);}else start();   // 再生中でなければ、タップ直後にそのまま話す（iOSの制限対策）
+}
+// 学習設定の「読み上げ」：声・速さ・テスト再生
+function renderTtsUI(){
+  const seg=$('ttsSeg'),sel=$('ttsVoice'),note=$('ttsNote');if(!seg||!sel)return;
+  seg.replaceChildren();
+  TTS_RATES.forEach(r=>{const b=node('button',r.t);b.type='button';b.setAttribute('aria-pressed',String(settings.ttsRate===r.v));
+    b.addEventListener('click',()=>{settings.ttsRate=r.v;saveSettings();renderTtsUI();});seg.append(b);});
+  sel.replaceChildren();
+  const auto=node('option','自動（おすすめ）');auto.value='';sel.append(auto);
+  TTS.voices.forEach(v=>{const o=node('option',v.name+'（'+v.lang.replace('_','-')+(v.localService?'':'・ネット接続が必要')+'）');o.value=v.voiceURI;sel.append(o);});
+  sel.value=TTS.voices.some(v=>v.voiceURI===settings.ttsVoice)?settings.ttsVoice:'';
+  sel.disabled=!TTS.ok||!TTS.voices.length;
+  const cur=pickVoice();
+  note.textContent=!TTS.ok?'このブラウザは読み上げに対応していません。':
+    !TTS.voices.length?'英語の音声を探しています…見つからない場合は、端末の設定で英語（米国）の音声を追加してください。':
+    '使用中：'+cur.name+'（'+cur.lang.replace('_','-')+'）';
+}
+function bindTts(){
+  const sel=$('ttsVoice'),test=$('ttsTest'),msg=$('ttsMsg');if(!sel)return;
+  sel.addEventListener('change',()=>{settings.ttsVoice=sel.value;saveSettings();renderTtsUI();});
+  test.addEventListener('click',()=>speak('Hello! This is how the English voice sounds.',msg));
+  TTS.onVoices.push(renderTtsUI);renderTtsUI();
 }
 function audioControls(w){
   const b=node('div'),row=node('div',undefined,'audio-controls'),msg=node('p','','mini');msg.setAttribute('role','status');
@@ -379,12 +470,12 @@ function audioControls(w){
 }
 
 /* ========== 解説 ========== */
-function learningBlock(w){
+function learningBlock(w,expanded){
   const block=node('div'),dl=node('dl',undefined,'learning');
   dl.append(node('dt','意味'),node('dd',w.meaning+'（'+w.pos+'）'),node('dt','オリジナル例文'));
   const ex=node('dd');ex.append(node('div',w.exampleEn,'example'),node('p',w.exampleJa,'translation'));dl.append(ex);
   block.append(dl,audioControls(w));
-  const det=node('details');det.append(node('summary','詳しい解説・覚え方・入試の注意を見る'));
+  const det=node('details');det.open=!!expanded;det.append(node('summary','詳しい解説・覚え方・入試の注意を見る'));
   const more=node('dl',undefined,'learning');
   more.append(node('dt','分かりやすい解説'),node('dd',w.explanation),node('dt','覚え方'),node('dd',w.memoryTip),
     node('dt','間違いやすいポイント'),node('dd',w.pitfall),node('dt','入試での注意点'),node('dd',w.examNote));
@@ -535,18 +626,19 @@ async function showRankInto(out){
 /* ========== 設定（すべて端末に保存。毎回上書き） ========== */
 const HINT_MAX=5;
 const MODES=['mixed','choice','typing'],QMAX=50;
-let settings={hintLen:2,theme:'light',qMode:'mixed',qCount:5};
+let settings={hintLen:2,theme:'light',qMode:'mixed',qCount:5,ttsRate:.86,ttsVoice:''};
 async function loadSettings(){
   let st=null;try{st=await dbMeta('settings');}catch{}
   if(st&&typeof st==='object'){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
     if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(Number.isInteger(st.qCount)&&st.qCount>=1&&st.qCount<=QMAX)settings.qCount=st.qCount;
+    if([.7,.86,1].includes(st.ttsRate))settings.ttsRate=st.ttsRate;if(typeof st.ttsVoice==='string'&&st.ttsVoice.length<=300)settings.ttsVoice=st.ttsVoice;
     if(st.theme==='dark'||st.theme==='light')settings.theme=st.theme;
     applyTheme(settings.theme);
   }else{settings.theme=document.documentElement.dataset.theme==='dark'?'dark':'light';}
   try{localStorage.setItem('akuma_theme',settings.theme);}catch{} // 起動直後のちらつき防止用に、テーマだけlocalStorageにも写す
 }
-function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,qCount:settings.qCount,savedAt:Date.now()}).catch(()=>{});}
+function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,qCount:settings.qCount,ttsRate:settings.ttsRate,ttsVoice:settings.ttsVoice,savedAt:Date.now()}).catch(()=>{});}
 const MODE_LABEL={mixed:'ランダム',choice:'選択のみ',typing:'綴りのみ'};
 function renderModeSeg(){
   const seg=$('modeSeg');if(!seg)return;seg.replaceChildren();
@@ -610,8 +702,9 @@ async function importBackup(file){
   if(st&&typeof st==='object'){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
     if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(Number.isInteger(st.qCount)&&st.qCount>=1&&st.qCount<=QMAX)settings.qCount=st.qCount;
+    if([.7,.86,1].includes(st.ttsRate))settings.ttsRate=st.ttsRate;if(typeof st.ttsVoice==='string'&&st.ttsVoice.length<=300)settings.ttsVoice=st.ttsVoice;
     if(st.theme==='dark'||st.theme==='light'){settings.theme=st.theme;applyTheme(st.theme);try{localStorage.setItem('akuma_theme',st.theme);}catch{}}
-    await saveSettings();renderHintSeg();renderModeSeg();syncCountInput();renderHero();
+    await saveSettings();renderHintSeg();renderModeSeg();syncCountInput();renderHero();renderTtsUI();
   }
   if(window.AKUMA_SYNC)AKUMA_SYNC.syncNow();   // 復元した回答の日別数もサーバーへ反映
   return {na,nr};
@@ -656,7 +749,7 @@ async function renderMistakes(){
     renderMistakes();   // 件数・一覧を作り直す
   };
   list.slice(0,mistakeShown).forEach(x=>{
-    const w=byId[x.wordId],row=node('details',undefined,'mrow'),sm=node('summary',w.word);sm.append(node('small',w.meaning));row.append(sm);
+    const w=byId[x.wordId],row=node('details',undefined,'mrow'),sm=node('summary',w.word);row.append(sm);   // 閉じている間は日本語を出さない
     row.addEventListener('toggle',()=>{ // 中身は開いた時に作る（件数が多くても軽く）
       if(!row.open||row.dataset.built)return;row.dataset.built='1';
       const info=node('div');
@@ -664,7 +757,7 @@ async function renderMistakes(){
       if(x.last)info.append(statRow('間違えた回数',x.count+'回'),statRow('最後に間違えた日',x.last.day),statRow('そのときの答え',x.last.selected||'—'));
       else info.append(statRow('きっかけ','偶然の正解からおさらいに追加'));
       const rm=node('button','復習リストから削除','secondary');rm.type='button';rm.addEventListener('click',drop(x.wordId));
-      row.append(info,learningBlock(w),rm);
+      row.append(learningBlock(w,true),info,rm);   // 開いたら、意味・例文・解説をまとめて表示
     });
     rows.append(row);
   });
@@ -724,7 +817,7 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
     if(!window.indexedDB)throw new Error('このブラウザでは端末内保存（IndexedDB）を使えません。');
     device=await dbMeta('device');if(!device){device=uuid();await dbMeta('device',device);}
     try{const lr=await dbMeta('lastRange');if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){$('rFrom').value=lr.from;$('rTo').value=lr.to;}}catch{} // 前回選んだ範囲を復元
-    await loadSettings();renderHintSeg();renderModeSeg();bindCount();renderHero();
+    await loadSettings();renderHintSeg();renderModeSeg();bindCount();renderHero();bindTts();
     await loadWords();renderModeSeg();await updateStart();refreshSync();renderMistakes();
     if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
   }catch(e){$('start').textContent='開始できません';setError(e.message||'起動に失敗しました。');}
