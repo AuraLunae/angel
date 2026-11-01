@@ -1,7 +1,7 @@
 // テンシで英単語 service worker（高速表示版）。
 // 方針: 画面・JS・データはすべて「キャッシュを即返す」。更新は裏で取りに行き、次回のリロードで反映する。
 //       → オフラインでも回線が遅くても、待たされずに開く。新しい版は、あとでリロードすれば入る。
-const VERSION='akuma-v15';
+const VERSION='akuma-v16';
 const CORE=['config.js','sync.js','manifest.json','data/words.json']; // これが取れないとインストール失敗（古いSWが残る）
 const EXTRA=['icons/icon.svg','icons/icon-180.png','icons/icon-192.png','icons/icon-512.png']; // 取れなくてもOK
 const RECHECK_MS=5*60*1000;   // 同じファイルの更新確認は5分に1回まで（遅い回線で通信を増やさない）
