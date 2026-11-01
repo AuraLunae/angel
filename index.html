@@ -157,6 +157,7 @@ select.sel:disabled{color:var(--muted);border-bottom-color:var(--line)}
               <p class="mini" id="ttsNote"></p>
               <div class="audio-controls"><button class="secondary" id="ttsTest" type="button">テスト再生</button></div>
               <p class="mini" id="ttsMsg" role="status"></p>
+              <p class="mini">音が出ないときは、端末の音量とマナーモード（iPhoneは消音スイッチ）を確認して、声を変えてテスト再生してみてください。</p>
             </div>
             <p class="mini">範囲と文字数は、この端末に保存される。</p>
           </div>
@@ -221,14 +222,25 @@ async function loadWords(){
   genQuestions();
 }
 /* 足りない形式の問題を作る。単語ごとに同じ乱数(wordId固定)で作るので、いつ開いても同じ問題・同じ選択肢になる。 */
-const SPELLABLE=/^[A-Za-z]+([ -][A-Za-z]+)*$/;   // 綴りで答えられる表記だけ（afterward(s) や「～」を含む語は除く）
+/* 綴り問題の正解の形。見出し語の表記ゆれを正規化して、受け付ける答えの一覧にする。
+     afterward(s)    → afterward / afterwards（どちらも正解）
+     on behalf of ～ → on behalf of（「～」は答えに含めない）            */
+function answerForms(w){
+  if(w._forms)return w._forms;
+  const s=String(w.word).normalize('NFKC').replace(/[~〜]/g,' '),m=/\(([^)]*)\)/.exec(s);
+  const forms=m?[s.replace(m[0],''),s.replace(m[0],m[1])]:[s];
+  return w._forms=[...new Set(forms.map(norm))];
+}
+const cleanWord=w=>String(w.word).normalize('NFKC').replace(/[~〜]/g,' ').replace(/\([^)]*\)/,'').replace(/\s+/g,' ').trim();   // 語頭ヒント用（大文字小文字はそのまま）
+const letterCount=w=>{const n=answerForms(w).map(f=>f.replace(/[^a-z]/g,'').length),lo=Math.min(...n),hi=Math.max(...n);return lo===hi?String(lo):lo+'〜'+hi;};
+const SPELLABLE=w=>answerForms(w).every(f=>/^[a-z]+(?:[ -][a-z]+)*$/.test(f));   // 英字・空白・ハイフンだけなら綴りで答えられる
 function genQuestions(){
   const byPos={};words.forEach(w=>{(byPos[w.pos]=byPos[w.pos]||[]).push(w);});
   for(const w of words){
     const hasT=w.questions.some(q=>q.type==='typing'),hasC=w.questions.some(q=>q.type!=='typing');
-    if(!hasT&&SPELLABLE.test(w.word)){
+    if(!hasT&&SPELLABLE(w)){
       w.questions.push({questionId:w.wordId+'_GTYPE',type:'typing',kind:'NEW',gen:true,
-        prompt:'「'+w.meaning+'」を表す LEAP '+w.leapNo+' の見出し語を入力せよ。\n語頭「'+w.word.slice(0,2)+'」・英字'+w.word.replace(/[^A-Za-z]/g,'').length+'文字',
+        prompt:'「'+w.meaning+'」を表す LEAP '+w.leapNo+' の見出し語を入力せよ。\n語頭「'+cleanWord(w).slice(0,2)+'」・英字'+letterCount(w)+'文字',
         options:[],correctIndex:-1,questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'});
     }
     if(!hasC){
@@ -336,7 +348,7 @@ async function submit(set,slotNo,value){
   const w=byId[it.wordId],q=qOf(it),typing=q.type==='typing',day=JST(Date.now());
   let correct=false,selected='分からない';
   if(value!==-1){
-    if(typing){selected=String(value).trim();correct=norm(value)===norm(w.word);}
+    if(typing){selected=String(value).trim();correct=answerForms(w).includes(norm(String(value).replace(/[～~〜]/g,' ')));}   /* 「～」まで打っても正解 */
     else{selected=q.options[value];correct=value===q.correctIndex;}
   }
   const rv=updateReview(await dbGet('review',w.wordId),w.wordId,it.kind,correct,day);
@@ -390,10 +402,8 @@ if(TTS.ok){
   try{speechSynthesis.addEventListener('voiceschanged',ttsLoadVoices);}catch{speechSynthesis.onvoiceschanged=ttsLoadVoices;}
   let tries=0;const iv=setInterval(()=>{ttsLoadVoices();if(TTS.voices.length||++tries>20)clearInterval(iv);},300);   // voiceschanged が来ない端末向け
 }
-// 自動選択：米国英語を優先、聞き取りやすい声・端末内の声（オフラインで使える）を優先、macOSのおもしろ声は避ける
-function pickVoice(){
-  const vs=TTS.voices;if(!vs.length)return null;
-  if(settings.ttsVoice){const v=vs.find(x=>x.voiceURI===settings.ttsVoice);if(v)return v;}
+// 声の優先順位：米国英語を優先、聞き取りやすい声・端末内の声（オフラインで使える）を優先、macOSのおもしろ声は避ける
+function rankedVoices(){
   const score=v=>{
     const l=v.lang.replace('_','-').toLowerCase();let s=0;
     s+=l==='en-us'?50:l==='en-gb'?25:10;
@@ -401,45 +411,58 @@ function pickVoice(){
     if(v.localService)s+=15;
     if(/compact|novelty|bad news|bubbles|cellos|zarvox|whisper|trinoids|hysterical|organ|boing|bells|albert|junior|fred|ralph|good news|jester|superstar/i.test(v.name))s-=80;
     return s;};
-  return [...vs].sort((a,b)=>score(b)-score(a))[0];
+  return [...TTS.voices].sort((a,b)=>score(b)-score(a));
 }
+const chosenVoice=()=>settings.ttsVoice?TTS.voices.find(v=>v.voiceURI===settings.ttsVoice)||null:null;
 const ttsClean=t=>String(t).replace(/～/g,'').replace(/\(([^)]*)\)/g,'$1').replace(/\s+/g,' ').trim();   // afterward(s) → afterwards
+const IN_APP=/Line\/|FBAN|FBAV|Instagram|MicroMessenger|Twitter|TikTok/i.test(navigator.userAgent);   // アプリ内ブラウザは音が出ないことが多い
 let speechMsg=null;
 function stopSpeech(){
   TTS.seq++;clearTimeout(TTS.watch);
   if(TTS.ok){try{speechSynthesis.cancel();}catch{}}
   if(speechMsg){speechMsg.textContent='';speechMsg=null;}
 }
+/* 読み上げ。「再生中と出るのに音が出ない」ことがあるので、次の順に声を変えて自動で再挑戦する：
+     ①設定で選んだ声（無ければ端末の標準の英語音声）→ ②標準の音声 → ③おすすめ1位 → ④おすすめ2位
+   「始まらない」「エラー」「再生が短すぎて実際は無音」のどれかを検知したら、次の声へ進む。 */
 function speak(text,msg){
   if(!TTS.ok){msg.textContent='このブラウザでは読み上げを使えません。SafariやChromeで開いてください。';return;}
   const my=++TTS.seq;clearTimeout(TTS.watch);
   if(speechMsg&&speechMsg!==msg)speechMsg.textContent='';
   speechMsg=msg;msg.textContent='準備中…';
-  const start=()=>{
-    if(my!==TTS.seq)return;   // 待っている間に別の操作があった
-    const u=new SpeechSynthesisUtterance(ttsClean(text));
-    const v=pickVoice();if(v){u.voice=v;u.lang=v.lang;}else u.lang='en-US';
+  const clean=ttsClean(text),order=[],add=v=>{if(!order.includes(v))order.push(v);};
+  const ch=chosenVoice();add(ch||null);add(null);rankedVoices().slice(0,2).forEach(add);
+  const REASON={
+    silent:'再生は終わりましたが、音が出ていない可能性があります。音量・マナーモード（iPhoneは消音スイッチ）・Bluetoothの出力先を確認し、設定の「読み上げ」で別の声を選んでテストしてください。',
+    error:'音声を再生できませんでした。端末の音量と、英語の音声が入っているか確認してください。',
+    nostart:TTS.voices.length?'音声が始まりませんでした。もう一度押してください。':'英語の音声が見つかりません。端末の設定で英語（米国）の音声を追加してください。'};
+  const run=i=>{
+    if(my!==TTS.seq)return;
+    const v=order[i],u=new SpeechSynthesisUtterance(clean);
+    if(v){u.voice=v;u.lang=v.lang;}else u.lang='en-US';
     u.rate=settings.ttsRate;u.pitch=1;u.volume=1;
-    let started=false,done=false;
-    const finish=m=>{if(done)return;done=true;clearTimeout(TTS.watch);if(my===TTS.seq){msg.textContent=m||'';if(speechMsg===msg)speechMsg=null;}};
-    u.onstart=()=>{started=true;if(my===TTS.seq)msg.textContent='再生中…';};
-    u.onend=()=>finish('');
-    u.onerror=e=>{
-      const er=e&&e.error;
-      if(er==='canceled'||er==='interrupted')return finish('');
-      finish(er==='not-allowed'?'音声がブロックされました。もう一度ボタンを押してください。':
-        '音声を再生できませんでした。端末の音量と、英語の音声が入っているか確認してください。');
+    let started=false,done=false,t0=0;
+    const end=m=>{if(done)return;done=true;clearTimeout(TTS.watch);if(my===TTS.seq){msg.textContent=m||'';if(speechMsg===msg)speechMsg=null;}};
+    const fail=why=>{   // この声はだめ → 次の声へ。もう無ければ理由を表示
+      if(done)return;done=true;clearTimeout(TTS.watch);if(my!==TTS.seq)return;
+      if(i+1<order.length){msg.textContent='別の声で再生します…';try{speechSynthesis.cancel();}catch{}setTimeout(()=>run(i+1),120);}
+      else{msg.textContent=REASON[why];if(speechMsg===msg)speechMsg=null;try{speechSynthesis.cancel();}catch{}}
     };
+    u.onstart=()=>{started=true;t0=performance.now();if(my===TTS.seq&&!done)msg.textContent='再生中…'+(i?'（別の声）':'');};
+    u.onend=()=>{
+      if(done)return;
+      const dur=performance.now()-(t0||performance.now());
+      if(started&&dur<Math.min(1500,80+25*clean.length))return fail('silent');   // 文字数のわりに短すぎる＝実際は鳴っていない
+      end('');
+    };
+    u.onerror=e=>{const er=e&&e.error;if(er==='canceled'||er==='interrupted')return end('');fail('error');};
     TTS.cur=u;   // 回収されないよう参照を保持
-    try{speechSynthesis.speak(u);}catch{return finish('音声を再生できませんでした。');}
-    TTS.watch=setTimeout(()=>{   // 5秒たっても始まらない＝音声が無い/ブロックされている/キューが固まっている
-      if(started||done)return;
-      finish(TTS.voices.length?'音声が始まりませんでした。もう一度押してください。':'英語の音声が見つかりません。端末の設定で英語（米国）の音声を追加してください。');
-      try{speechSynthesis.cancel();}catch{}   // 先にメッセージを出してから、固まったキューを空にする（cancelの中断イベントで上書きされないように）
-    },5000);
+    try{speechSynthesis.resume();}catch{}   // 一時停止状態で固まっていると無音になるため
+    try{speechSynthesis.speak(u);}catch{return fail('error');}
+    TTS.watch=setTimeout(()=>{if(!started)fail('nostart');},5000);
   };
   let busy=false;try{busy=speechSynthesis.speaking||speechSynthesis.pending;}catch{}
-  if(busy){try{speechSynthesis.cancel();}catch{}setTimeout(start,90);}else start();   // 再生中でなければ、タップ直後にそのまま話す（iOSの制限対策）
+  if(busy){try{speechSynthesis.cancel();}catch{}setTimeout(()=>run(0),90);}else run(0);   // 再生中でなければ、タップ直後にそのまま話す（iOSの制限対策）
 }
 // 学習設定の「読み上げ」：声・速さ・テスト再生
 function renderTtsUI(){
@@ -452,10 +475,11 @@ function renderTtsUI(){
   TTS.voices.forEach(v=>{const o=node('option',v.name+'（'+v.lang.replace('_','-')+(v.localService?'':'・ネット接続が必要')+'）');o.value=v.voiceURI;sel.append(o);});
   sel.value=TTS.voices.some(v=>v.voiceURI===settings.ttsVoice)?settings.ttsVoice:'';
   sel.disabled=!TTS.ok||!TTS.voices.length;
-  const cur=pickVoice();
-  note.textContent=!TTS.ok?'このブラウザは読み上げに対応していません。':
+  const cur=chosenVoice();
+  note.textContent=IN_APP?'アプリ内ブラウザでは音が出ないことがあります。SafariやChromeで開いてください。':
+    !TTS.ok?'このブラウザは読み上げに対応していません。':
     !TTS.voices.length?'英語の音声を探しています…見つからない場合は、端末の設定で英語（米国）の音声を追加してください。':
-    '使用中：'+cur.name+'（'+cur.lang.replace('_','-')+'）';
+    cur?'使用中：'+cur.name+'（'+cur.lang.replace('_','-')+'）':'使用中：自動（端末の標準の英語音声。音が出ないときは別の声を自動で試す）';
 }
 function bindTts(){
   const sel=$('ttsVoice'),test=$('ttsTest'),msg=$('ttsMsg');if(!sel)return;
@@ -646,7 +670,7 @@ function renderModeSeg(){
     b.addEventListener('click',()=>{settings.qMode=m;saveSettings();renderModeSeg();renderMistakes();});seg.append(b);});
   const nt=words.filter(w=>fits(w,'typing')).length,nc=words.filter(w=>fits(w,'choice')).length;
   $('modeNote').textContent=settings.qMode==='mixed'?'選択問題と綴り問題がまざって出る。':
-    (words.length?(settings.qMode==='choice'?'全 '+nc+' 語が選択問題で出る。':nt+' 語が綴り問題で出る（記号を含む '+(words.length-nt)+' 語は除く）。')+'元は片方の形式しかない語も、自動で問題を作って出す。':'');
+    (words.length?(settings.qMode==='choice'?nc:nt)===words.length?'全 '+words.length+' 語が'+(settings.qMode==='choice'?'選択':'綴り')+'問題で出る。':(settings.qMode==='choice'?nc:nt)+' 語が'+(settings.qMode==='choice'?'選択':'綴り')+'問題で出る。':'');
 }
 function renderHero(){$('heroTitle').textContent='今日の'+settings.qCount+'問';}
 function syncCountInput(){$('qCountIn').value=settings.qCount;}
@@ -665,10 +689,10 @@ function renderHintSeg(){
 }
 // 入力問題の「語頭「xx」・英字N文字」の行を、設定の文字数で作り直す
 function typingPrompt(q,w){
-  const m=/^([\s\S]*?)\n?語頭「[^」]*」・英字(\d+)文字\s*$/.exec(q.prompt);
+  const m=/^([\s\S]*?)\n?語頭「[^」]*」・英字(\d+(?:〜\d+)?)文字\s*$/.exec(q.prompt);
   if(!m)return q.prompt;
-  const n=Math.min(settings.hintLen,Math.max(0,w.word.length-1)); // 答えそのものは見せない
-  return m[1].replace(/\n+$/,'')+'\n'+(n>0?'語頭「'+w.word.slice(0,n)+'」・':'')+'英字'+m[2]+'文字';
+  const base=cleanWord(w),n=Math.min(settings.hintLen,Math.max(0,base.length-1)); // 答えそのものは見せない
+  return m[1].replace(/\n+$/,'')+'\n'+(n>0?'語頭「'+base.slice(0,n)+'」・':'')+'英字'+letterCount(w)+'文字';
 }
 const reviewBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','おさらい'),node('span','LEAP '+w.leapNo));return b;};
 const mistakeBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','間違えた問題の復習'),node('span','LEAP '+w.leapNo));return b;};
