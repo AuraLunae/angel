@@ -336,6 +336,9 @@ function renderQuestion(set,it){
   if(q.type==='typing'){
     const form=node('form'),label=node('label','英語の見出し語');label.htmlFor='typing';
     const input=node('input',undefined,'typing');Object.assign(input,{id:'typing',type:'text',autocomplete:'off',autocapitalize:'none',spellcheck:false,maxLength:160});
+    // 予測変換・自動修正・入力履歴の候補・文章校正の拡張を出さない
+    Object.entries({autocorrect:'off',writingsuggestions:'false',enterkeyhint:'done','aria-autocomplete':'none',name:'a'+Math.random().toString(36).slice(2),
+      'data-gramm':'false','data-gramm_editor':'false','data-enable-grammarly':'false','data-lpignore':'true','data-1p-ignore':'true'}).forEach(([k,v])=>input.setAttribute(k,v));
     const help=node('p','大文字・小文字は区別しない。','mini');
     const sub=node('button','回答する','primary');sub.type='submit';
     form.append(label,input,help,sub);form.addEventListener('submit',e=>{e.preventDefault();if(!input.value.trim())return input.focus();go(input.value,sub);});opts.append(form);
