@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#fcfcfb">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="テンシ英単語">
+<script>try{var t=localStorage.getItem('akuma_theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}</script>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<title>テンシで英単語</title>
+<style>
+:root{color-scheme:light;--bg:#f8f7f3;--text:#141414;--muted:#85837c;--line:#dddbd3;--ink:#141414;--on-ink:#f8f7f3;--good:#1c6b4d;--bad:#a8372c;--err:#a8372c;--tint:rgba(20,20,20,.04)}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0f0f0e;--text:#ecebe6;--muted:#8a8982;--line:#2a2a28;--ink:#ecebe6;--on-ink:#0f0f0e;--good:#86d0ae;--bad:#ee9186;--err:#ee9186;--tint:rgba(236,235,230,.06)}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;line-height:1.85;font-size:16px;letter-spacing:.02em;font-feature-settings:"palt";padding-bottom:env(safe-area-inset-bottom)}
+button{font:inherit;letter-spacing:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.4;cursor:default}
+:focus-visible{outline:1px solid var(--text);outline-offset:4px}
+button,input{touch-action:manipulation}
+.shell{max-width:520px;margin:auto;padding:max(32px,env(safe-area-inset-top)) 28px 88px}
+.brand{display:flex;align-items:baseline;gap:16px;font-size:12px}
+.brand-name{font-weight:600;letter-spacing:.18em;margin-right:auto}
+#net,.theme-btn{color:var(--muted);font-size:11px;letter-spacing:.16em}
+.theme-btn{background:none;border:0;padding:4px 0;text-transform:uppercase}
+.hero{padding:88px 0 40px}
+.label{margin:0;font-size:11px;letter-spacing:.32em;color:var(--muted)}
+.bigdate{margin:6px 0 10px;font-size:88px;font-weight:200;line-height:1;letter-spacing:-.04em;font-feature-settings:"tnum";font-variant-numeric:tabular-nums}
+h1{font-size:15px;font-weight:500;letter-spacing:.14em;margin:0}
+.primary{display:block;width:100%;border:1px solid var(--ink);border-radius:0;background:var(--ink);color:var(--on-ink);padding:0 20px;min-height:56px;font-size:13px;font-weight:500;letter-spacing:.3em;text-indent:.3em;transition:background .25s,color .25s}
+.primary:hover:not(:disabled){background:transparent;color:var(--ink)}
+.secondary{display:block;width:100%;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;text-align:left;padding:16px 0;margin:0;font-size:14px;transition:border-color .25s}
+.secondary:hover:not(:disabled){border-bottom-color:var(--text)}
+.back-link{background:none;border:0;color:var(--muted);font-size:12px;letter-spacing:.14em;padding:28px 0 0}
+.mini{font-size:12px;color:var(--muted);line-height:1.9}.muted{color:var(--muted)}
+.sync{font-size:11px;color:var(--muted);margin:14px 0 0;min-height:1em;letter-spacing:.06em}
+.status{font-size:12px;color:var(--muted);min-height:22px;margin:16px 0 0}
+.error{border-left:1px solid var(--err);padding:2px 0 2px 16px;color:var(--err);margin:28px 0;font-size:13px}.error p{margin:0}
+[hidden]{display:none!important}
+.menu{margin-top:64px}
+.menu>details{border:1px solid var(--line);margin:0 0 20px}
+.menu>details>summary{padding:20px 22px}
+.menu>details>summary::after,.menu>details>summary::before{right:22px}
+.menu>details[open]{border-color:var(--text)}
+.menu>details[open]>summary{border-bottom:1px solid var(--line)}
+.menu>details>.pane{padding:24px 22px;background:var(--tint)}
+.set-group+.set-group{margin-top:28px;padding-top:26px;border-top:1px solid var(--line)}
+.set-group>.label{margin:0 0 12px}
+.note{margin:56px 0 0;color:var(--muted);font-size:11px;line-height:2;letter-spacing:.06em}
+details{border-bottom:1px solid var(--line)}
+summary{cursor:pointer;padding:18px 0;list-style:none;font-size:14px;letter-spacing:.1em;position:relative}
+summary::-webkit-details-marker{display:none}
+summary::after,summary::before{content:"";position:absolute;right:2px;top:50%;width:10px;height:1px;background:var(--muted)}
+summary::after{transform:rotate(90deg);transition:transform .25s}
+details[open]>summary::after{transform:rotate(0)}
+details>*:not(summary){padding-bottom:22px}
+details details{border-bottom:0}details details summary{color:var(--muted);font-size:13px;padding:14px 0}
+.topline{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;letter-spacing:.1em;margin:40px 0 12px}
+.progress{height:1px;background:var(--line)}.progress span{display:block;height:1px;background:var(--text);transition:width .4s}
+.qhead{display:flex;justify-content:space-between;align-items:baseline;margin:56px 0 24px;font-size:11px;color:var(--muted);letter-spacing:.14em;font-feature-settings:"tnum"}
+.qhead span:first-child{font-size:30px;font-weight:200;color:var(--text);letter-spacing:-.02em}
+.chip{color:var(--muted)}
+.card{padding:0;margin:0 0 32px;border:0;background:none}
+.card+.card,.card+details{margin-top:32px}
+.revenge{margin:0 0 32px;border-left:1px solid var(--text);padding-left:16px}
+.revenge h2{font-size:11px;font-weight:500;letter-spacing:.24em;margin:0}.revenge p{white-space:pre-line;font-size:13px;color:var(--muted);margin:2px 0 0}
+.question h2{font-size:21px;font-weight:500;line-height:1.75;margin:0 0 36px;white-space:pre-line;overflow-wrap:anywhere;text-wrap:balance;letter-spacing:.03em}
+.options{border-top:1px solid var(--text)}
+.options:has(form){border-top:0}
+.option{display:flex;gap:20px;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:18px 2px;min-height:60px;line-height:1.65;transition:padding .25s}
+.option:hover:not(:disabled){background:none;padding-left:10px}
+.option .letter{flex:none;width:14px;color:var(--muted);font-size:12px;padding-top:2px;letter-spacing:.1em}
+.option.selected{font-weight:600;padding-left:10px}
+.unknown-option{color:var(--muted);font-size:14px}
+input.typing{width:100%;background:none;border:0;border-bottom:1px solid var(--text);border-radius:0;color:var(--text);padding:10px 0;font:inherit;font-size:28px;font-weight:300;letter-spacing:.04em;margin:8px 0 14px}
+form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
+.eyebrow{font-size:11px;color:var(--muted);margin-top:40px;letter-spacing:.2em}
+.feedback-title{font-size:28px;font-weight:300;margin:8px 0 24px;line-height:1.3;letter-spacing:.08em}.good{color:var(--good)}.bad{color:var(--bad)}
+.answer-box{padding:0;margin:0 0 8px}.answer-box p{margin:2px 0}.answer-box strong{font-weight:600}
+.learning{margin:0}.learning dt{font-size:11px;color:var(--muted);margin:32px 0 6px;font-weight:500;letter-spacing:.2em}.learning dd{margin:0;white-space:pre-line;overflow-wrap:anywhere}
+.example{font-size:18px;line-height:1.75}.translation{margin:4px 0 0!important;color:var(--muted);font-size:13px}
+.review-note{margin-top:32px;font-size:12px;color:var(--muted);letter-spacing:.08em}
+.choice-glosses{margin-top:18px;color:var(--muted);font-size:13px}.choice-glosses p{margin:4px 0!important}
+.audio-controls{display:flex;gap:24px;margin:24px 0 0}.audio-controls button{width:auto;flex:none;border:0;padding:4px 0;margin:0;font-size:12px;letter-spacing:.14em;border-bottom:1px solid var(--line)}
+.audio-controls button:hover{border-bottom-color:var(--text)}
+.result-head{padding:64px 0 8px}.result-head h1{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.24em}
+.score{font-size:120px;font-weight:200;line-height:1;margin:16px 0 8px;letter-spacing:-.05em;font-feature-settings:"tnum"}.score small{font-size:12px;color:var(--muted);letter-spacing:.2em;margin-left:10px}
+.result-card{border-top:1px solid var(--line);padding-top:24px;margin-top:40px}.result-card h2{font-size:11px;font-weight:500;color:var(--muted);margin:0 0 12px;letter-spacing:.24em}
+.result-list{padding:0;margin:0;list-style:none}.result-list small{color:var(--muted);margin-left:12px}
+.review-list{list-style:none;padding:0;margin:0}.review-list li{display:flex;justify-content:space-between;padding:4px 0}
+.range-fields{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.stat{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;letter-spacing:.06em}.stat span:last-child{color:var(--muted);font-feature-settings:"tnum"}
+#play .primary,#result .primary{margin-top:32px}
+.review-banner{display:flex;justify-content:space-between;align-items:baseline;background:var(--ink);color:var(--on-ink);padding:10px 16px;margin:8px 0 0;font-size:12px;letter-spacing:.3em}
+.review-banner span:last-child{font-size:11px;letter-spacing:.14em;opacity:.8}
+.review-banner+div>.topline{margin-top:20px}
+#rank .label,#resultRank .label{margin:18px 0 4px}#rank>.label:first-child,#resultRank>.label:first-child,#rank>div:first-child .label,#resultRank>div:first-child .label{margin-top:4px}
+.seg{display:flex;margin:10px 0 8px}
+.seg button{flex:1;background:none;border:1px solid var(--line);margin-left:-1px;border-radius:0;padding:10px 0;font-size:14px;letter-spacing:.08em;min-height:44px}
+.seg button:first-child{margin-left:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);border-color:var(--ink);position:relative}
+.recap-mark{display:inline-block;width:3.2em;color:var(--muted);font-size:12px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="brand"><span class="brand-name">テンシで英単語</span><span id="net"></span><button class="theme-btn" id="theme" type="button">Dark</button></header>
+  <main>
+    <section id="home">
+      <div class="hero"><p class="label">TODAY</p><p class="bigdate" id="today"></p><h1>今日の5問</h1></div>
+      <button class="primary" id="start" disabled>読み込み中</button>
+      <p class="sync" id="sync"></p>
+      <div class="menu">
+        <details id="studyBox" open><summary>学習設定</summary>
+          <div class="pane">
+            <div class="set-group">
+              <p class="label">範囲を決めて練習</p>
+              <form id="rangeForm"><div class="range-fields">
+                <label>開始<input class="typing" id="rFrom" type="number" min="1" max="2300" value="1" inputmode="numeric" required></label>
+                <label>終了<input class="typing" id="rTo" type="number" min="1" max="2300" value="2300" inputmode="numeric" required></label></div>
+                <p class="mini">LEAP番号。5語以上。</p>
+                <button class="primary" type="submit">この範囲で練習を始める</button></form>
+            </div>
+            <div class="set-group">
+              <p class="label">語頭を見せる文字数（入力問題）</p>
+              <div class="seg" id="hintSeg" role="group" aria-label="語頭を見せる文字数"></div>
+              <p class="mini" id="hintNote"></p>
+            </div>
+            <p class="mini">範囲と文字数は、この端末に保存される。</p>
+          </div>
+        </details>
+        <details id="rankBox"><summary>ランキング</summary>
+          <div class="pane"><div id="rank" role="status" aria-live="polite"></div><button class="secondary" id="rankBtn" type="button">順位を更新</button></div></details>
+        <details id="histBox"><summary>学習記録</summary><div class="pane"><div id="hist"></div></div></details>
+      </div>
+      <p class="note">間違えた語は、1・3・7・14・30日後に戻る。記録はこの端末に保存される。</p>
+    </section>
+    <section id="play" hidden></section>
+    <section id="result" hidden></section>
+  </main>
+  <div id="error" class="error" role="alert" hidden></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+</div>
+<script>
+'use strict';
+/* ========== 基本ユーティリティ ========== */
+const $=id=>document.getElementById(id);
+const node=(t,text,cls)=>{const e=document.createElement(t);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
+const JST=ms=>new Date(ms+32400000).toISOString().slice(0,10);
+const addDays=(d,n)=>new Date(Date.parse(d+'T00:00:00Z')+n*864e5).toISOString().slice(0,10);
+const INTERVALS=[1,3,7,14,30];          // おさらいの間隔（日）
+const norm=s=>String(s==null?'':s).normalize('NFKC').toLowerCase().trim().replace(/\s+/g,' ');
+function rng(seed){let h=1779033703^seed.length;for(let i=0;i<seed.length;i++){h=Math.imul(h^seed.charCodeAt(i),3432918353);h=h<<13|h>>>19;}let a=h>>>0;
+  return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function shuffle(arr,r){const a=arr.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function uuid(){return crypto.randomUUID?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:r&3|8).toString(16);});}
+
+/* ========== 端末内データベース（IndexedDB） ========== */
+const idb=new Promise((res,rej)=>{
+  const r=indexedDB.open('akuma',1);
+  r.onupgradeneeded=()=>{const d=r.result;d.createObjectStore('meta');d.createObjectStore('sets',{keyPath:'id'});
+    d.createObjectStore('answers',{keyPath:'answerId'});d.createObjectStore('review',{keyPath:'wordId'});};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);
+});
+const rq=r=>new Promise((res,rej)=>{r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+const st=async(n,m='readonly')=>(await idb).transaction(n,m).objectStore(n);
+const dbGet=async(s,k)=>rq((await st(s)).get(k));
+const dbAll=async s=>rq((await st(s)).getAll());
+const dbMeta=async(k,v)=>v===undefined?rq((await st('meta')).get(k)):rq((await st('meta','readwrite')).put(v,k));
+async function commit(writes){ // 複数ストアへまとめて保存（全部成功か全部失敗）
+  const d=await idb,t=d.transaction([...new Set(writes.map(w=>w[0]))],'readwrite');
+  writes.forEach(([s,v])=>t.objectStore(s).put(v));
+  return new Promise((res,rej)=>{t.oncomplete=res;t.onerror=t.onabort=()=>rej(t.error||new Error('保存に失敗しました'));});
+}
+
+/* ========== 状態 ========== */
+let words=[],byId={},byWord={},meaningToWords={},device=null;
+
+async function loadWords(){
+  const res=await fetch('data/words.json');if(!res.ok)throw new Error('単語データを読み込めません');
+  words=await res.json();
+  words.forEach(w=>{byId[w.wordId]=w;byWord[w.word.toLowerCase()]=w;const k=norm(w.meaning);(meaningToWords[k]=meaningToWords[k]||[]).push(w.word);});
+}
+
+/* ========== 出題 ========== */
+async function makeSet(kind,opts={}){
+  const day=JST(Date.now()),sets=await dbAll('sets'),today=sets.filter(s=>s.day===day);
+  const id=kind==='daily'?'daily:'+day:kind+':'+day+':'+today.length;
+  const r=rng(id+':'+device);
+  const answers=await dbAll('answers'),last=new Map();
+  answers.forEach(a=>{const p=last.get(a.wordId);if(!p||a.at>p.at)last.set(a.wordId,a);});
+  const reviews=(await dbAll('review')).filter(x=>x.status==='ACTIVE');
+  let rev=[];
+  if(kind==='daily'||kind==='extra')rev=reviews.filter(x=>x.nextDate<=day).sort((a,b)=>a.nextDate<b.nextDate?-1:1).slice(0,2);
+  if(kind==='early')rev=reviews.filter(x=>x.nextDate>day).sort((a,b)=>a.nextDate<b.nextDate?-1:1).slice(0,2);
+  const revIds=new Set(rev.map(x=>x.wordId)),used=new Set(today.flatMap(s=>s.items.map(i=>i.wordId)));
+  const lo=opts.from||1,hi=opts.to||2300;
+  const pool=words.filter(w=>w.leapNo>=lo&&w.leapNo<=hi&&!revIds.has(w.wordId));
+  const fresh=shuffle(pool.filter(w=>!last.has(w.wordId)&&!used.has(w.wordId)),r);
+  const stale=pool.filter(w=>last.has(w.wordId)&&!used.has(w.wordId)).sort((a,b)=>last.get(a.wordId).at-last.get(b.wordId).at);
+  const again=shuffle(pool.filter(w=>used.has(w.wordId)),r);
+  const picks=[...fresh,...stale,...again].slice(0,5-rev.length);
+  const mk=(w,kind)=>{
+    let qs=w.questions;
+    if(kind==='REVIEW'&&qs.some(q=>q.type==='typing'))qs=qs.filter(q=>q.type==='typing'); // おさらいは入力問題を優先
+    const q=qs[Math.floor(r()*qs.length)],p=last.get(w.wordId);
+    return {wordId:w.wordId,questionId:q.questionId,kind,prev:kind==='REVIEW'&&p?{day:p.day,correct:p.correct,answer:p.selected}:null,ans:null};
+  };
+  const items=shuffle([...rev.map(x=>mk(byId[x.wordId],'REVIEW')),...picks.map(w=>mk(w,'NEW'))],r).map((it,i)=>({slotNo:i+1,...it}));
+  const set={id,kind,day,range:kind==='range'?{from:lo,to:hi}:null,items,created:Date.now()};
+  await commit([['sets',set]]);return set;
+}
+const isDone=s=>s.items.every(i=>i.ans);
+const qOf=it=>byId[it.wordId].questions.find(q=>q.questionId===it.questionId);
+
+function updateReview(rv,wordId,kind,correct,day){
+  if(!correct)return {wordId,stage:0,status:'ACTIVE',nextDate:addDays(day,INTERVALS[0])};
+  if(kind==='REVIEW'&&rv&&rv.status==='ACTIVE'){
+    if(rv.stage>=INTERVALS.length-1)return {...rv,status:'MASTERED',nextDate:null};
+    const s=rv.stage+1;return {...rv,stage:s,nextDate:addDays(day,INTERVALS[s])};
+  }
+  return null;
+}
+
+async function submit(set,slotNo,value){
+  const it=set.items[slotNo-1];if(it.ans)return it.ans;      // 二重回答を防ぐ
+  const w=byId[it.wordId],q=qOf(it),typing=q.type==='typing',day=JST(Date.now());
+  let correct=false,selected='分からない';
+  if(value!==-1){
+    if(typing){selected=String(value).trim();correct=norm(value)===norm(w.word);}
+    else{selected=q.options[value];correct=value===q.correctIndex;}
+  }
+  const rv=updateReview(await dbGet('review',w.wordId),w.wordId,it.kind,correct,day);
+  if(rv){rv.updatedAt=Date.now();rv.dirty=1;}
+  const ans={correct,selected,at:Date.now(),review:rv?{stage:rv.stage,status:rv.status,nextDate:rv.nextDate}:null};
+  const rec={answerId:uuid(),assignmentId:set.id,slotNo,wordId:w.wordId,questionId:q.questionId,kind:it.kind,type:q.type,
+    selected,selectedIndex:value===-1||typing?(value===-1?-1:null):value,answerText:typing&&value!==-1?selected:null,correct,day,at:ans.at};
+  it.ans=ans;
+  try{await commit([['sets',set],['answers',rec],...(rv?[['review',rv]]:[])]);}
+  catch(e){it.ans=null;throw e;}
+  refreshSync();if(window.AKUMA_SYNC)AKUMA_SYNC.kick();return ans;
+}
+async function selfReview(set,slotNo){
+  const it=set.items[slotNo-1],day=JST(Date.now()),rv={wordId:it.wordId,stage:0,status:'ACTIVE',nextDate:addDays(day,INTERVALS[0]),updatedAt:Date.now(),dirty:1};
+  await commit([['review',rv]]);if(window.AKUMA_SYNC)AKUMA_SYNC.kick();return rv.nextDate;
+}
+
+/* ========== 画面共通 ========== */
+function setStatus(t){$('status').textContent=t||'';}
+function setError(m){$('error').replaceChildren(node('p',m));$('error').hidden=false;}
+function clearError(){$('error').hidden=true;$('error').replaceChildren();}
+function show(name){stopSpeech();['home','play','result'].forEach(id=>{$(id).hidden=id!==name;});clearError();setStatus('');}
+function focusHeading(c){const h=c.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true});}window.scrollTo(0,0);}
+function progress(set){
+  const n=set.items.filter(i=>i.ans).length,c=node('div'),line=node('div',undefined,'topline');
+  line.append(node('span',set.day+(set.range?' ／ LEAP '+set.range.from+'〜'+set.range.to:'')+' の5問'),node('span',n+' / 5 回答済み'));
+  const bar=node('div',undefined,'progress'),fill=node('span');fill.style.width=(n/5*100)+'%';bar.append(fill);c.append(line,bar);return c;
+}
+function reviewText(rv,kind){
+  if(!rv)return '復習予定なし';
+  if(rv.status==='MASTERED')return kind==='REVIEW'?'習得済み（30日後も正解）':'習得済み';
+  return '次のおさらい　'+rv.nextDate;
+}
+
+/* ========== 音声（再生ボタンを押した時だけ） ========== */
+let speechMsg=null;
+function stopSpeech(){try{speechSynthesis.cancel();}catch{}if(speechMsg){speechMsg.textContent='';speechMsg=null;}}
+function speak(text,msg){
+  stopSpeech();
+  if(!('speechSynthesis' in window)){msg.textContent='この端末では読み上げを使えないよ。';return;}
+  const u=new SpeechSynthesisUtterance(String(text).replace(/～/g,''));u.lang='en-US';u.rate=.86;
+  const v=speechSynthesis.getVoices().find(x=>/^en[-_]US$/i.test(x.lang));if(v)u.voice=v;
+  u.onend=()=>{msg.textContent='';};u.onerror=()=>{msg.textContent='音声を再生できなかったよ。もう一度押してね。';};
+  speechMsg=msg;msg.textContent='再生中…';speechSynthesis.speak(u);
+}
+function audioControls(w){
+  const b=node('div'),row=node('div',undefined,'audio-controls'),msg=node('p','','mini');msg.setAttribute('role','status');
+  const mk=(t,fn)=>{const x=node('button',t,'secondary');x.type='button';x.addEventListener('click',fn);return x;};
+  row.append(mk('単語を聞く',()=>speak(w.word,msg)),mk('例文を聞く',()=>speak(w.exampleEn,msg)),mk('停止',stopSpeech));b.append(row,msg);return b;
+}
+
+/* ========== 解説 ========== */
+function learningBlock(w){
+  const block=node('div'),dl=node('dl',undefined,'learning');
+  dl.append(node('dt','意味'),node('dd',w.meaning+'（'+w.pos+'）'),node('dt','オリジナル例文'));
+  const ex=node('dd');ex.append(node('div',w.exampleEn,'example'),node('p',w.exampleJa,'translation'));dl.append(ex);
+  block.append(dl,audioControls(w));
+  const det=node('details');det.append(node('summary','詳しい解説・覚え方・入試の注意を見る'));
+  const more=node('dl',undefined,'learning');
+  more.append(node('dt','分かりやすい解説'),node('dd',w.explanation),node('dt','覚え方'),node('dd',w.memoryTip),
+    node('dt','間違いやすいポイント'),node('dd',w.pitfall),node('dt','入試での注意点'),node('dd',w.examNote));
+  det.append(more);block.append(det);return block;
+}
+function glossBlock(w,q,ans){
+  if(q.type==='typing')return null;
+  const wrong=q.options.map((t,i)=>({t,i})).filter(o=>o.i!==q.correctIndex);
+  const b=node('div',undefined,'mini choice-glosses');b.append(node('p','ほかの選択肢も確認'));
+  wrong.forEach(o=>{
+    const v=q.type==='word_mcq'?(byWord[norm(o.t)]||{}).meaning:(meaningToWords[norm(o.t)]||[]).join(' / ');
+    b.append(node('p',String.fromCharCode(65+o.i)+'. '+o.t+(o.t===ans.selected?'（あなたの答え）':'')+'　'+(v||'―')));
+  });return b;
+}
+
+/* ========== 出題・解答・結果 ========== */
+let cur=null; // 今開いているセット
+function nextSlot(set){return set.items.find(i=>!i.ans);}
+
+function play(set){
+  cur=set;
+  const it=nextSlot(set);if(!it)return renderResult(set);
+  renderQuestion(set,it);
+}
+function renderQuestion(set,it){
+  show('play');const area=$('play'),w=byId[it.wordId],q=qOf(it);
+  area.replaceChildren(...(it.kind==='REVIEW'?[reviewBanner(w)]:[]),progress(set));
+  const head=node('div',undefined,'qhead');
+  head.append(node('span',String(it.slotNo).padStart(2,'0')+' / 05'),
+    node('span',(it.kind==='REVIEW'?'おさらい　':'')+({meaning_mcq:'日本語を選択',word_mcq:'英語を選択',typing:'英語を入力'}[q.type]||'選択問題'),'chip'));
+  area.append(head);
+  if(it.kind==='REVIEW'){
+    const rv=node('div',undefined,'card revenge');rv.append(node('h2','おさらい'),node('p','LEAP '+w.leapNo+' をもう一度。'));
+    if(it.prev&&it.prev.correct===false)rv.append(node('p','前回の答え（'+it.prev.day+'）：'+it.prev.answer+'（不正解）','mini'));
+    else if(it.prev)rv.append(node('p','前回は正解','mini'));
+    area.append(rv);
+  }
+  const card=node('div',undefined,'card question');card.append(node('h2',q.type==='typing'?typingPrompt(q,w):q.prompt));
+  const opts=node('div',undefined,'options');
+  const go=async(value,btn)=>{
+    area.querySelectorAll('button,input').forEach(c=>{c.disabled=true;});if(btn)btn.classList.add('selected');
+    try{await submit(set,it.slotNo,value);renderFeedback(set,it);}
+    catch(e){setError('回答を端末に保存できませんでした。保存領域の空きを確認して、もう一度試してください。');area.querySelectorAll('button,input').forEach(c=>{c.disabled=false;});}
+  };
+  if(q.type==='typing'){
+    const form=node('form'),label=node('label','英語の見出し語');label.htmlFor='typing';
+    const input=node('input',undefined,'typing');Object.assign(input,{id:'typing',type:'text',autocomplete:'off',autocapitalize:'none',spellcheck:false,maxLength:160});
+    const help=node('p','大文字・小文字は区別しない。','mini');
+    const sub=node('button','回答する','primary');sub.type='submit';
+    form.append(label,input,help,sub);form.addEventListener('submit',e=>{e.preventDefault();if(!input.value.trim())return input.focus();go(input.value,sub);});opts.append(form);
+  }else q.options.forEach((o,i)=>{
+    const b=node('button',undefined,'option');b.type='button';b.setAttribute('aria-label',String.fromCharCode(65+i)+' '+o);
+    b.append(node('span',String.fromCharCode(65+i),'letter'),node('span',o));b.addEventListener('click',()=>go(i,b));opts.append(b);
+  });
+  const unk=node('button','分からない','option unknown-option');unk.type='button';unk.addEventListener('click',()=>go(-1,unk));opts.append(unk);
+  card.append(opts);area.append(card);
+  const back=node('button','トップに戻る','back-link');back.addEventListener('click',goHome);area.append(back);focusHeading(area);
+}
+function renderFeedback(set,it){
+  show('play');const area=$('play'),w=byId[it.wordId],q=qOf(it),a=it.ans;
+  area.replaceChildren(...(it.kind==='REVIEW'?[reviewBanner(w)]:[]),progress(set));
+  const card=node('div',undefined,'card');
+  card.append(node('div','LEAP '+w.leapNo+' / '+w.word,'eyebrow'),node('h2',a.correct?'正解':'不正解','feedback-title '+(a.correct?'good':'bad')));
+  const box=node('div',undefined,'answer-box');box.append(node('p','あなたの答え：'+a.selected));
+  const c=node('p','正解：');c.append(node('strong',q.type==='typing'?w.word:q.options[q.correctIndex]));box.append(c);
+  const g=glossBlock(w,q,a);if(g)box.append(g);
+  card.append(box,learningBlock(w),node('div',reviewText(a.review,it.kind),'review-note'));
+  if(a.correct){
+    const sr=node('button','偶然の正解なので、おさらいに回す','secondary'),msg=node('p','','mini');sr.type='button';sr.style.whiteSpace='pre-line';
+    sr.addEventListener('click',async()=>{sr.disabled=true;try{const d=await selfReview(set,it.slotNo);msg.textContent='追加しました。次のおさらい　'+d;sr.textContent='追加済み';}catch{msg.textContent='保存できませんでした。';sr.disabled=false;}});
+    card.append(sr,msg);
+  }
+  area.append(card);
+  const next=node('button',isDone(set)?'本日の結果を見る':'次の問題へ','primary');next.addEventListener('click',()=>play(set));area.append(next);
+  focusHeading(area);
+}
+function renderResult(set){
+  show('result');const area=$('result');area.replaceChildren();
+  const fb=set.items.map(it=>({it,w:byId[it.wordId],a:it.ans})),ok=fb.filter(x=>x.a.correct).length;
+  const head=node('div',undefined,'result-head');
+  head.append(node('h1',set.day+'　'+(set.range?'範囲練習':set.kind==='daily'?'今日の5問':'追加の5問')));
+  const sc=node('div',undefined,'score');sc.append(document.createTextNode(ok+' '),node('small','/ 5 正解'));
+  head.append(sc,node('p',''+Math.round(ok/5*100)+'%','muted'));area.append(head);
+  if(window.AKUMA_SYNC&&AKUMA_SYNC.state.enabled){ // 同期が有効なら、5問終わった結果画面に順位と1つ上との差を出す（オフライン時は復帰後に自動表示）
+    const rk=node('div',undefined,'card result-card'),rb=node('div');rk.append(node('h2','順位'));
+    rb.id='resultRank';rb.setAttribute('role','status');rk.append(rb);area.append(rk);showRankInto(rb);
+  }
+  const wrong=node('div',undefined,'card result-card');wrong.append(node('h2','間違えた単語'));
+  const wl=fb.filter(x=>!x.a.correct);
+  if(!wl.length)wrong.append(node('p','全問正解'));
+  else{const ul=node('ul',undefined,'result-list');wl.forEach(x=>{const li=node('li',x.w.word+'　');li.append(node('small',x.w.meaning));ul.append(li);});wrong.append(ul);}
+  area.append(wrong);
+  const rv=node('div',undefined,'card result-card');rv.append(node('h2','おさらい予定'));
+  const rl=fb.filter(x=>x.a.review);
+  if(!rl.length)rv.append(node('p','なし'));
+  else{const ul=node('ul',undefined,'review-list');rl.forEach(x=>{const li=node('li');li.append(node('span',x.w.word),node('time',x.a.review.status==='MASTERED'?'習得済み':x.a.review.nextDate));ul.append(li);});rv.append(ul);}
+  area.append(rv);
+  const rc=node('div',undefined,'card result-card');rc.append(node('h2','この5問の解説を見返す'));
+  fb.forEach(x=>{const d=node('details');d.append(node('summary',(x.a.correct?'正解　':'不正解　')+x.w.word+'　'+x.w.meaning),learningBlock(x.w));rc.append(d);});area.append(rc);
+  const more=node('button',set.range?'同じ範囲でもう5問':'さらに進む','primary');more.type='button';
+  more.addEventListener('click',()=>begin(set.range?'range':'extra',set.range||{}));area.append(more);
+  const early=node('button','おさらいを先取りして、もう5問','secondary');early.type='button';early.style.whiteSpace='pre-line';
+  early.addEventListener('click',()=>begin('early'));area.append(early);
+  const back=node('button','トップに戻る','secondary');back.addEventListener('click',goHome);area.append(back);focusHeading(area);
+}
+
+/* ========== 順位表示（トップ・結果画面で共通） ========== */
+const statRow=(a,b)=>{const r=node('div',undefined,'stat');r.append(node('span',a),node('span',b));return r;};
+function rankBlock(title,x){
+  const d=node('div');d.append(node('p',title,'label'));
+  if(!x.answers){d.append(node('p','まだ0問。1問解くと順位が出る。','mini'));return d;}
+  d.append(statRow('順位',x.rank+'位 ／ '+x.participants+'人中'),statRow('解いた問題数',x.answers+'問'),
+    statRow('1つ上との差',Number.isSafeInteger(x.gap)&&x.gap>0?'あと '+x.gap+'問':(x.rank===1?'1位':'—')));
+  if(x.tied>1)d.append(statRow('同順位',(x.tied-1)+'人'));
+  return d;
+}
+const rankMsg=(out,t)=>out.replaceChildren(node('p',t,'mini'));
+async function showRankInto(out){
+  if(navigator.onLine===false){rankMsg(out,'オフラインのため順位は表示できません。オンラインに戻ると表示します。');return;}
+  rankMsg(out,'順位を確認中…');
+  try{
+    const r=await AKUMA_SYNC.ranking(),ok=x=>x&&Number.isSafeInteger(x.answers)&&Number.isSafeInteger(x.participants);
+    if(!ok(r.daily)||!ok(r.allTime))throw new Error('順位を確認できませんでした。');
+    out.replaceChildren(rankBlock('今日　'+r.day,r.daily),rankBlock('通算',r.allTime));
+  }catch(e){rankMsg(out,e.message||'順位を確認できませんでした。');}
+}
+
+/* ========== 設定（すべて端末に保存。毎回上書き） ========== */
+const HINT_MAX=5;
+let settings={hintLen:2,theme:'light'};
+async function loadSettings(){
+  let st=null;try{st=await dbMeta('settings');}catch{}
+  if(st&&typeof st==='object'){
+    if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
+    if(st.theme==='dark'||st.theme==='light')settings.theme=st.theme;
+    applyTheme(settings.theme);
+  }else{settings.theme=document.documentElement.dataset.theme==='dark'?'dark':'light';}
+  try{localStorage.setItem('akuma_theme',settings.theme);}catch{} // 起動直後のちらつき防止用に、テーマだけlocalStorageにも写す
+}
+function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,savedAt:Date.now()}).catch(()=>{});}
+function renderHintSeg(){
+  const seg=$('hintSeg');if(!seg)return;seg.replaceChildren();
+  for(let i=0;i<=HINT_MAX;i++){
+    const b=node('button',i===0?'なし':String(i));b.type='button';b.setAttribute('aria-pressed',String(settings.hintLen===i));
+    b.addEventListener('click',()=>{settings.hintLen=i;saveSettings();renderHintSeg();});seg.append(b);
+  }
+  $('hintNote').textContent='例：agree → '+(settings.hintLen>0?'語頭「'+'agree'.slice(0,Math.min(settings.hintLen,4))+'」・':'')+'英字5文字';
+}
+// 入力問題の「語頭「xx」・英字N文字」の行を、設定の文字数で作り直す
+function typingPrompt(q,w){
+  const m=/^([\s\S]*?)\n?語頭「[^」]*」・英字(\d+)文字\s*$/.exec(q.prompt);
+  if(!m)return q.prompt;
+  const n=Math.min(settings.hintLen,Math.max(0,w.word.length-1)); // 答えそのものは見せない
+  return m[1].replace(/\n+$/,'')+'\n'+(n>0?'語頭「'+w.word.slice(0,n)+'」・':'')+'英字'+m[2]+'文字';
+}
+const reviewBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','おさらい'),node('span','LEAP '+w.leapNo));return b;};
+
+/* ========== バックアップの書き出し・復元 ========== */
+async function importBackup(file){
+  if(file.size>30*1024*1024)throw new Error('ファイルが大きすぎます。');
+  let j;try{j=JSON.parse(await file.text());}catch{throw new Error('バックアップファイルを読み込めません（JSONではありません）。');}
+  if(!j||!Array.isArray(j.answers)||!Array.isArray(j.review))throw new Error('このアプリのバックアップではありません。');
+  const okA=a=>a&&typeof a.answerId==='string'&&a.answerId.length>0&&a.answerId.length<=80&&/^W\d{4}$/.test(a.wordId)&&/^\d{4}-\d{2}-\d{2}$/.test(a.day)&&Number.isFinite(a.at)&&typeof a.correct==='boolean';
+  const okR=r=>r&&/^W\d{4}$/.test(r.wordId)&&Number.isInteger(r.stage)&&r.stage>=0&&r.stage<=4&&(r.status==='ACTIVE'||r.status==='MASTERED');
+  const haveA=new Set((await dbAll('answers')).map(a=>a.answerId));
+  const haveR=new Map((await dbAll('review')).map(r=>[r.wordId,r]));
+  const writes=[];let na=0,nr=0;
+  for(const a of j.answers){
+    if(!okA(a)||haveA.has(a.answerId))continue;
+    haveA.add(a.answerId);na++;
+    writes.push(['answers',{answerId:a.answerId,assignmentId:a.assignmentId,slotNo:a.slotNo,wordId:a.wordId,questionId:a.questionId,kind:a.kind,type:a.type,
+      selected:a.selected,selectedIndex:a.selectedIndex,answerText:a.answerText,correct:a.correct,day:a.day,at:a.at}]);
+  }
+  for(const r of j.review){ // 復習状態は、新しい方を採用
+    if(!okR(r))continue;const cur=haveR.get(r.wordId);
+    if(cur&&(cur.updatedAt||0)>=(r.updatedAt||0))continue;
+    nr++;writes.push(['review',{wordId:r.wordId,stage:r.stage,status:r.status,nextDate:r.status==='ACTIVE'?r.nextDate:null,updatedAt:r.updatedAt||0,dirty:0}]);
+  }
+  for(let i=0;i<writes.length;i+=500)await commit(writes.slice(i,i+500));
+  const lr=j.lastRange;
+  if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){await dbMeta('lastRange',{from:lr.from,to:lr.to,savedAt:Date.now()});$('rFrom').value=lr.from;$('rTo').value=lr.to;}
+  const st=j.settings;
+  if(st&&typeof st==='object'){
+    if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
+    if(st.theme==='dark'||st.theme==='light'){settings.theme=st.theme;applyTheme(st.theme);try{localStorage.setItem('akuma_theme',st.theme);}catch{}}
+    await saveSettings();renderHintSeg();
+  }
+  if(window.AKUMA_SYNC)AKUMA_SYNC.syncNow();   // 復元した回答の日別数もサーバーへ反映
+  return {na,nr};
+}
+
+/* ========== 開始・トップ ========== */
+async function begin(kind,opts){
+  try{
+    let set;
+    if(kind==='daily'){
+      const active=await dbMeta('active'),a=active&&await dbGet('sets',active);
+      set=a&&!isDone(a)&&a.day===JST(Date.now())?a:(await dbGet('sets','daily:'+JST(Date.now())))||await makeSet('daily');
+    }else set=await makeSet(kind,opts);
+    await dbMeta('active',set.id);
+    play(set);
+  }catch(e){setError(e.message||'開始できませんでした。');}
+}
+function setToday(){const d=new Date(Date.now()+32400000);$('today').textContent=String(d.getUTCMonth()+1).padStart(2,'0')+'.'+String(d.getUTCDate()).padStart(2,'0');}
+async function goHome(){setToday();show('home');refreshSync();updateStart();}
+async function updateStart(){
+  const b=$('start'),active=await dbMeta('active'),s=active&&await dbGet('sets',active);
+  const open=s&&!isDone(s)&&s.day===JST(Date.now());
+  const daily=await dbGet('sets','daily:'+JST(Date.now()));
+  b.disabled=false;b.textContent=open?'続きから':(daily&&isDone(daily)?'今日の結果':'始める');
+  b.onclick=()=>open?begin('daily'):(daily&&isDone(daily)?renderResult(daily):begin('daily'));
+}
+async function refreshSync(){
+  const S=window.AKUMA_SYNC;let t='';
+  if(S&&S.state.enabled){
+    if(S.state.running)t='同期中…';
+    else if(S.state.error)t='同期待ち：'+S.state.error+'（回答はこの端末に保存済み）';
+    else if(S.state.lastOk)t='同期済み '+new Date(S.state.lastOk).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+  }
+  $('sync').textContent=t;
+}
+async function renderHistory(){
+  const ans=await dbAll('answers'),rv=await dbAll('review'),box=$('hist');box.replaceChildren();
+  const row=(a,b)=>{const r=node('div',undefined,'stat');r.append(node('span',a),node('span',b));return r;};
+  const ok=ans.filter(a=>a.correct).length,seen=new Set(ans.map(a=>a.wordId));
+  box.append(row('総回答数',ans.length+'問'),row('正答率',ans.length?Math.round(ok/ans.length*100)+'%':'—'),row('練習した単語',seen.size+'語'),
+    row('おさらい待ち',rv.filter(x=>x.status==='ACTIVE').length+'語'),row('習得済み',rv.filter(x=>x.status==='MASTERED').length+'語'),row('最終同期',window.AKUMA_SYNC&&AKUMA_SYNC.state.lastOk?new Date(AKUMA_SYNC.state.lastOk).toLocaleString('ja-JP'):'—'));
+  const days={};ans.forEach(a=>{days[a.day]=(days[a.day]||0)+1;});
+  Object.keys(days).sort().reverse().slice(0,14).forEach(d=>box.append(row(d,days[d]+'回答')));
+  const ex=node('button','回答データを書き出す（バックアップ）','secondary');ex.type='button';
+  ex.addEventListener('click',async()=>{let lastRange=null;try{lastRange=await dbMeta('lastRange')||null;}catch{}
+    const blob=new Blob([JSON.stringify({version:1,device,lastRange,settings,answers:ans,review:rv},null,1)],{type:'application/json'}),a=node('a');
+    a.href=URL.createObjectURL(blob);a.download='akuma-backup-'+JST(Date.now())+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
+  const msg=node('p','','mini');msg.setAttribute('role','status');
+  const imp=node('button','バックアップから復元する','secondary');imp.type='button';
+  const fi=node('input');fi.type='file';fi.accept='application/json,.json';fi.hidden=true;
+  imp.addEventListener('click',()=>fi.click());
+  fi.addEventListener('change',async()=>{const f=fi.files&&fi.files[0];fi.value='';if(!f)return;
+    msg.textContent='復元中…';
+    try{const r=await importBackup(f);await renderHistory();const m=$('hist').querySelector('p[role=status]');if(m)m.textContent='復元しました：回答 '+r.na+'件、おさらい '+r.nr+'語を追加・更新';refreshSync();}
+    catch(e){msg.textContent=e.message||'復元できませんでした。';}});
+  box.append(ex,imp,fi,msg);
+}
+function applyTheme(t){const d=t==='dark';document.documentElement.dataset.theme=d?'dark':'light';
+  const b=$('theme');b.textContent=d?'Light':'Dark';b.setAttribute('aria-label',d?'ホワイトモードに切り替え':'ダークモードに切り替え');
+  document.querySelector('meta[name=theme-color]').content=d?'#121212':'#fcfcfb';}
+function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
+
+/* ========== 起動 ========== */
+(async function init(){
+  setToday();applyTheme(document.documentElement.dataset.theme==='dark'?'dark':'light');
+  $('theme').addEventListener('click',()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';applyTheme(t);settings.theme=t;try{localStorage.setItem('akuma_theme',t);}catch{}saveSettings();});
+  addEventListener('online',netLabel);addEventListener('offline',netLabel);netLabel();
+  $('rangeForm').addEventListener('submit',e=>{e.preventDefault();const f=+$('rFrom').value,t=+$('rTo').value;
+    if(!Number.isInteger(f)||!Number.isInteger(t)||f<1||t>2300||t-f<4)return setError('LEAP番号1〜2300で、5語以上の範囲を指定してください。');
+    dbMeta('lastRange',{from:f,to:t,savedAt:Date.now()}).catch(()=>{}); // 選んだ範囲を端末に保存（毎回上書き）
+    begin('range',{from:f,to:t});});
+  $('rankBtn').addEventListener('click',async()=>{const btn=$('rankBtn');btn.disabled=true;try{await showRankInto($('rank'));}finally{btn.disabled=false;}});
+  $('rankBox').addEventListener('toggle',()=>{if($('rankBox').open)showRankInto($('rank'));});
+  addEventListener('online',()=>{const b=$('resultRank');if(b&&b.isConnected&&!$('result').hidden)showRankInto(b);});
+  $('histBox').addEventListener('toggle',()=>{if($('histBox').open)renderHistory();});
+  try{
+    if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{}); // 単語データ読み込みの成否に関係なく登録
+    if(!window.indexedDB)throw new Error('このブラウザでは端末内保存（IndexedDB）を使えません。');
+    device=await dbMeta('device');if(!device){device=uuid();await dbMeta('device',device);}
+    try{const lr=await dbMeta('lastRange');if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){$('rFrom').value=lr.from;$('rTo').value=lr.to;}}catch{} // 前回選んだ範囲を復元
+    await loadSettings();renderHintSeg();
+    await loadWords();await updateStart();refreshSync();
+    if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+  }catch(e){$('start').textContent='開始できません';setError(e.message||'起動に失敗しました。');}
+})();
+</script>
+<script src="config.js"></script>
+<script src="sync.js"></script>
+</body>
+</html>
