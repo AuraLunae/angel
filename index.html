@@ -116,6 +116,8 @@ select.sel:disabled{color:var(--muted);border-bottom-color:var(--line)}
 #mistakeList>.primary{margin-bottom:18px}
 #mistakeList .stat{padding:4px 0}
 #mistakeList .mrow .secondary{margin-top:14px}
+input.typing.keyin{font-size:15px;letter-spacing:.1em;text-transform:uppercase;font-feature-settings:"tnum"}
+#linkBox .primary{margin-top:20px}#linkBox .secondary{margin-top:6px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -167,6 +169,16 @@ select.sel:disabled{color:var(--muted);border-bottom-color:var(--line)}
         </details>
         <details id="rankBox"><summary>ランキング</summary>
           <div class="pane"><div id="rank" role="status" aria-live="polite"></div><button class="secondary" id="rankBtn" type="button">順位を更新</button></div></details>
+        <details id="linkBox"><summary>ポータル連携<span id="linkSum" class="muted"></span></summary>
+          <div class="pane">
+            <div id="linkState" role="status" aria-live="polite"></div>
+            <label>連携キー<input class="typing keyin" id="linkKey" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-…"></label>
+            <button class="primary" id="linkBtn" type="button">連携する</button>
+            <button class="secondary" id="unlinkBtn" type="button" hidden>連携を解除</button>
+            <p class="mini" id="linkMsg" role="status"></p>
+            <p class="mini">ポータルサイトで発行したキーを貼り付けると、他のサイトとランキングを共有できる。送られるのは日ごとの回答数だけ。</p>
+          </div>
+        </details>
         <details id="histBox"><summary>学習記録</summary><div class="pane"><div id="hist"></div></div></details>
       </div>
       <p class="note">間違えた語は、1・3・7・14・30日後に戻る。記録はこの端末に保存される。</p>
@@ -648,9 +660,47 @@ async function showRankInto(out){
   rankMsg(out,'順位を確認中…');
   try{
     const r=await AKUMA_SYNC.ranking(),ok=x=>x&&Number.isSafeInteger(x.answers)&&Number.isSafeInteger(x.participants);
+    if(r&&r.hidden){rankMsg(out,'いまランキングには表示されていません。ポータルサイトを開いて確認してください。');return;}
     if(!ok(r.daily)||!ok(r.allTime))throw new Error('順位を確認できませんでした。');
     out.replaceChildren(rankBlock('今日　'+r.day,r.daily),rankBlock('通算',r.allTime));
   }catch(e){rankMsg(out,e.message||'順位を確認できませんでした。');}
+}
+
+/* ========== ポータル連携 ========== */
+async function renderLink(){
+  const S=window.AKUMA_SYNC,box=$('linkState'),un=$('unlinkBtn'),sum=$('linkSum');
+  if(!S||!S.state.enabled){box.replaceChildren(node('p','同期が設定されていないため、連携は使えません。','mini'));$('linkBtn').disabled=true;return;}
+  if(navigator.onLine===false){box.replaceChildren(node('p','オフラインのため、連携の状態は確認できません。','mini'));return;}
+  try{
+    const r=await S.linkStatus();
+    if(r&&r.linked){
+      const rows=[statRow('状態','連携中'),statRow('ニックネーム',r.nickname||'—')];
+      if(r.banned)rows.push(statRow('ランキング','非表示（ポータルで確認）'));
+      box.replaceChildren(...rows);un.hidden=false;sum.textContent='　連携中';
+    }else{box.replaceChildren(node('p','まだ連携していない。','mini'));un.hidden=true;sum.textContent='';}
+  }catch(e){box.replaceChildren(node('p',e.message||'連携の状態を確認できませんでした。','mini'));}
+}
+function bindLink(){
+  const btn=$('linkBtn'),inp=$('linkKey'),un=$('unlinkBtn'),msg=$('linkMsg');
+  btn.addEventListener('click',async()=>{
+    const v=inp.value.trim();
+    if(!v){msg.textContent='キーを貼り付けてください。';return;}
+    btn.disabled=true;msg.textContent='連携しています…';
+    try{
+      const r=await AKUMA_SYNC.link(v);inp.value='';
+      msg.textContent=r&&r.replaced?'連携しました。以前の連携は解除されました。':'連携しました。';
+      AKUMA_SYNC.syncNow();
+    }catch(e){msg.textContent=e.message||'連携できませんでした。';}
+    finally{btn.disabled=false;renderLink();}
+  });
+  un.addEventListener('click',async()=>{
+    if(!confirm('ポータルとの連携を解除しますか？この端末の記録は消えません。'))return;
+    un.disabled=true;msg.textContent='解除しています…';
+    try{await AKUMA_SYNC.unlink();msg.textContent='連携を解除しました。';}
+    catch(e){msg.textContent=e.message||'解除できませんでした。';}
+    finally{un.disabled=false;renderLink();}
+  });
+  $('linkBox').addEventListener('toggle',()=>{if($('linkBox').open)renderLink();});
 }
 
 /* ========== 設定（すべて端末に保存。毎回上書き） ========== */
@@ -841,6 +891,7 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
   $('rankBtn').addEventListener('click',async()=>{const btn=$('rankBtn');btn.disabled=true;try{await showRankInto($('rank'));}finally{btn.disabled=false;}});
   $('rankBox').addEventListener('toggle',()=>{if($('rankBox').open)showRankInto($('rank'));});
   addEventListener('online',()=>{const b=$('resultRank');if(b&&b.isConnected&&!$('result').hidden)showRankInto(b);});
+  bindLink();
   $('histBox').addEventListener('toggle',()=>{if($('histBox').open)renderHistory();});
   try{
     if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{}); // 単語データ読み込みの成否に関係なく登録
