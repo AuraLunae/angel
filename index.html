@@ -87,6 +87,10 @@ form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
 .choice-glosses{margin-top:18px;color:var(--muted);font-size:13px}.choice-glosses p{margin:4px 0!important}
 .audio-controls{display:flex;gap:24px;margin:24px 0 0}.audio-controls button{width:auto;flex:none;border:0;padding:4px 0;margin:0;font-size:12px;letter-spacing:.14em;border-bottom:1px solid var(--line)}
 .audio-controls button:hover{border-bottom-color:var(--text)}
+.rate-row{display:flex;align-items:center;gap:14px;margin:12px 0 0;font-size:11px;color:var(--muted);letter-spacing:.08em}
+.rate-row button{width:auto;flex:none;background:none;border:0;border-bottom:1px solid transparent;border-radius:0;padding:2px 0;margin:0;min-height:0;font-size:11px;letter-spacing:.08em;color:var(--muted)}
+.rate-row button[aria-pressed="true"]{color:var(--text);border-bottom-color:var(--text)}
+.tts-note{font-size:11px;margin:8px 0 0}
 .result-head{padding:64px 0 8px}.result-head h1{font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.24em}
 .score{font-size:120px;font-weight:200;line-height:1;margin:16px 0 8px;letter-spacing:-.05em;font-feature-settings:"tnum"}.score small{font-size:12px;color:var(--muted);letter-spacing:.2em;margin-left:10px}
 .result-card{border-top:1px solid var(--line);padding-top:24px;margin-top:40px}.result-card h2{font-size:11px;font-weight:500;color:var(--muted);margin:0 0 12px;letter-spacing:.24em}
@@ -117,7 +121,7 @@ select.sel:disabled{color:var(--muted);border-bottom-color:var(--line)}
 </head>
 <body>
 <div class="shell">
-  <header class="brand"><span class="brand-name">テンシで英単語<small class="brand-sub">実はブックマークなどに保存しておくと、<br>オフラインでも普通に開けます。<br>試しにネットを切ってリロードしてみてください。<br>ちなみに最初のダウンロードはインスタの画像一枚にも満たないです。</small></span><span id="net"></span><button class="theme-btn" id="theme" type="button">Dark</button></header>
+  <header class="brand"><span class="brand-name">テンシで英単語<small class="brand-sub">実はブックマークなどに保存しておくと、<br>オフラインでも普通に開けます。<br>試しにネットを切ってリロードしてみてください。</small></span><span id="net"></span><button class="theme-btn" id="theme" type="button">Dark</button></header>
   <main>
     <section id="home">
       <div class="hero"><p class="label">TODAY</p><p class="bigdate" id="today"></p><h1 id="heroTitle">今日の5問</h1></div>
@@ -152,7 +156,6 @@ select.sel:disabled{color:var(--muted);border-bottom-color:var(--line)}
             </div>
             <div class="set-group">
               <p class="label">読み上げ</p>
-              <div class="seg" id="ttsSeg" role="group" aria-label="読み上げの速さ"></div>
               <select class="sel" id="ttsVoice" aria-label="読み上げの声"></select>
               <p class="mini" id="ttsNote"></p>
               <div class="audio-controls"><button class="secondary" id="ttsTest" type="button">テスト再生</button></div>
@@ -466,10 +469,7 @@ function speak(text,msg){
 }
 // 学習設定の「読み上げ」：声・速さ・テスト再生
 function renderTtsUI(){
-  const seg=$('ttsSeg'),sel=$('ttsVoice'),note=$('ttsNote');if(!seg||!sel)return;
-  seg.replaceChildren();
-  TTS_RATES.forEach(r=>{const b=node('button',r.t);b.type='button';b.setAttribute('aria-pressed',String(settings.ttsRate===r.v));
-    b.addEventListener('click',()=>{settings.ttsRate=r.v;saveSettings();renderTtsUI();});seg.append(b);});
+  const sel=$('ttsVoice'),note=$('ttsNote');if(!sel||!note)return;
   sel.replaceChildren();
   const auto=node('option','自動（おすすめ）');auto.value='';sel.append(auto);
   TTS.voices.forEach(v=>{const o=node('option',v.name+'（'+v.lang.replace('_','-')+(v.localService?'':'・ネット接続が必要')+'）');o.value=v.voiceURI;sel.append(o);});
@@ -487,10 +487,16 @@ function bindTts(){
   test.addEventListener('click',()=>speak('Hello! This is how the English voice sounds.',msg));
   TTS.onVoices.push(renderTtsUI);renderTtsUI();
 }
+// 画面にある速さボタンの表示を、いまの設定にそろえる（一覧など、複数の音声ボタンが同時に出ていても同期する）
+function syncRateUI(){document.querySelectorAll('.rate-row button').forEach(x=>x.setAttribute('aria-pressed',String(+x.dataset.rate===settings.ttsRate)));}
 function audioControls(w){
   const b=node('div'),row=node('div',undefined,'audio-controls'),msg=node('p','','mini');msg.setAttribute('role','status');
   const mk=(t,fn)=>{const x=node('button',t,'secondary');x.type='button';x.addEventListener('click',fn);return x;};
-  row.append(mk('単語を聞く',()=>speak(w.word,msg)),mk('例文を聞く',()=>speak(w.exampleEn,msg)),mk('停止',stopSpeech));b.append(row,msg);return b;
+  row.append(mk('単語を聞く',()=>speak(w.word,msg)),mk('例文を聞く',()=>speak(w.exampleEn,msg)),mk('停止',stopSpeech));
+  const rate=node('div',undefined,'rate-row');rate.setAttribute('role','group');rate.setAttribute('aria-label','読み上げの速さ');rate.append(node('span','速さ'));
+  TTS_RATES.forEach(r=>{const x=node('button',r.t);x.type='button';x.dataset.rate=String(r.v);x.setAttribute('aria-pressed',String(settings.ttsRate===r.v));
+    x.addEventListener('click',()=>{settings.ttsRate=r.v;saveSettings();syncRateUI();});rate.append(x);});
+  b.append(row,rate,node('p','音が出ないときは、消音（マナー）モードをオフにしてください。','mini tts-note'),msg);return b;
 }
 
 /* ========== 解説 ========== */
