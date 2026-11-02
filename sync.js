@@ -115,7 +115,23 @@ async function ranking(){
   catch(e){if(e.network)throw new Error('オフラインのため順位を確認できません。');throw e;}
 }
 
-window.AKUMA_SYNC={state,kick,syncNow,ranking};
+// ===== ポータル連携（キーを貼って、他のサイトと記録・ランキングを共有する）=====
+const SITE='eitango';
+const netMsg=e=>{if(e&&e.network)throw new Error('オフラインのため連携できません。');throw e;};
+async function link(key){
+  if(!enabled)throw new Error('同期が設定されていないため、連携は使えません。');
+  try{return await rpc('redeem_link_key',{p_key:String(key||'').trim(),p_site:SITE});}catch(e){return netMsg(e);}
+}
+async function unlink(){
+  if(!enabled)throw new Error('同期が設定されていないため、連携は使えません。');
+  try{return await rpc('unlink_self',{p_site:SITE});}catch(e){return netMsg(e);}
+}
+async function linkStatus(){
+  if(!enabled)throw new Error('同期が設定されていないため、連携は使えません。');
+  try{return await rpc('link_status',{p_site:SITE});}catch(e){return netMsg(e);}
+}
+
+window.AKUMA_SYNC={state,kick,syncNow,ranking,link,unlink,linkStatus};
 
 // 同期のきっかけ：回答 / どのボタンを押したとき / オンライン復帰 / 画面に戻ったとき / 定期チェック
 addEventListener('online',()=>{fails=0;syncNow();});
