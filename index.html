@@ -176,7 +176,7 @@ input.typing.keyin{font-size:15px;letter-spacing:.1em;text-transform:uppercase;f
             <button class="primary" id="linkBtn" type="button">連携する</button>
             <button class="secondary" id="unlinkBtn" type="button" hidden>連携を解除</button>
             <p class="mini" id="linkMsg" role="status"></p>
-            <p class="mini">ポータルサイトで発行したキーを貼り付けると、他のサイトとランキングを共有できる。送られるのは日ごとの回答数だけ。</p>
+            <p class="mini">ポータルサイトの「連携する」ボタンから開くと、キーが自動で入る。手で貼り付けてもよい。ランキングを他のサイトと共有できる。送られるのは日ごとの回答数だけ。</p>
           </div>
         </details>
         <details id="histBox"><summary>学習記録</summary><div class="pane"><div id="hist"></div></div></details>
@@ -703,6 +703,27 @@ function bindLink(){
   $('linkBox').addEventListener('toggle',()=>{if($('linkBox').open)renderLink();});
 }
 
+/* ポータルからのワンタッチ連携：ポータルが  #portal-link=キー  を付けて開く。
+   キーはアドレスバー・履歴に残さないよう、読んだらすぐURLから消す。
+   勝手に連携はせず、キー入力済みで連携パネルを開き、「連携する」を1回押せば完了する。 */
+function portalLinkFromHash(){
+  const m=/^#portal-link(?:=(.*))?$/.exec(location.hash||'');
+  if(!m)return;
+  let key='';
+  try{key=decodeURIComponent(m[1]||'').trim();}catch(_){}
+  if(!/^[A-Za-z0-9-]{8,120}$/.test(key))key='';
+  try{history.replaceState(null,'',location.pathname+location.search);}catch(_){}   // キーをURLから消す
+  const box=$('linkBox'),inp=$('linkKey'),btn=$('linkBtn'),msg=$('linkMsg');
+  if(!box||!inp||!btn)return;
+  if(box.open)renderLink();else box.open=true;       // 閉じていれば開く（開いたとき状態を自動で読み込む）
+  if(key){inp.value=key;msg.textContent='ポータルからキーを受け取りました。下の「連携する」を押すと完了します。';}
+  else{msg.textContent='ポータルで発行したキーを貼り付けて、「連携する」を押してください。';}
+  setTimeout(()=>{
+    try{box.scrollIntoView({behavior:'smooth',block:'center'});}catch(_){}
+    try{(key&&!btn.disabled?btn:inp).focus({preventScroll:true});}catch(_){}
+  },350);
+}
+
 /* ========== 設定（すべて端末に保存。毎回上書き） ========== */
 const HINT_MAX=5;
 const MODES=['mixed','choice','typing'],QMAX=50;
@@ -891,7 +912,7 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
   $('rankBtn').addEventListener('click',async()=>{const btn=$('rankBtn');btn.disabled=true;try{await showRankInto($('rank'));}finally{btn.disabled=false;}});
   $('rankBox').addEventListener('toggle',()=>{if($('rankBox').open)showRankInto($('rank'));});
   addEventListener('online',()=>{const b=$('resultRank');if(b&&b.isConnected&&!$('result').hidden)showRankInto(b);});
-  bindLink();
+  bindLink();portalLinkFromHash();addEventListener('hashchange',portalLinkFromHash);
   $('histBox').addEventListener('toggle',()=>{if($('histBox').open)renderHistory();});
   try{
     if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{}); // 単語データ読み込みの成否に関係なく登録
