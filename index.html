@@ -512,6 +512,21 @@ function audioControls(w){
 }
 
 /* ========== 解説 ========== */
+// 語源・語根・同語源の単語（w.etymology が無い語は何も足さない）。元の【語源】が覚え方にある語は、語源の文を重ねて出さない。
+// w.etymology.review は今後の改善用のメモ（確認が必要な点）。画面には出さない。
+const ETY_NOTE='※語源は諸説あります。';
+function etymologyRows(w){
+  const e=w.etymology,rows=[];if(!e)return rows;
+  if(e.tip)rows.push(node('dt','語源'),node('dd',e.tip+(e.low&&!e.root?'\n'+ETY_NOTE:'')));
+  if(e.root){
+    const lines=['語根 '+e.root+'＝'+(e.rootMeaning||'')];
+    (e.cognates||[]).forEach(c=>lines.push('・'+c.word+'（'+c.meaning+'）'+(c.link?'：'+c.link:'')));
+    if(e.low)lines.push(ETY_NOTE);
+    rows.push(node('dt','語根・同語源の単語'),node('dd',lines.join('\n')));
+  }
+  if(e.low&&!e.tip&&!e.root)rows.push(node('dt','語源'),node('dd',ETY_NOTE));   // 元の【語源】だけがある語
+  return rows;
+}
 function learningBlock(w,expanded){
   const block=node('div'),dl=node('dl',undefined,'learning');
   dl.append(node('dt','意味'),node('dd',w.meaning+'（'+w.pos+'）'),node('dt','オリジナル例文'));
@@ -520,6 +535,7 @@ function learningBlock(w,expanded){
   const det=node('details');det.open=!!expanded;det.append(node('summary','詳しい解説・覚え方・入試の注意を見る'));
   const more=node('dl',undefined,'learning');
   more.append(node('dt','分かりやすい解説'),node('dd',w.explanation),node('dt','覚え方'),node('dd',w.memoryTip),
+    ...etymologyRows(w),
     node('dt','間違いやすいポイント'),node('dd',w.pitfall),node('dt','入試での注意点'),node('dd',w.examNote));
   det.append(more);block.append(det);return block;
 }
