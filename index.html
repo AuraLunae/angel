@@ -126,6 +126,14 @@ input.typing.keyin{font-size:15px;letter-spacing:.1em;text-transform:uppercase;f
 .rel-head{letter-spacing:.1em;color:var(--text)}.rel-title{font-weight:500;color:var(--text)}
 .rel-entry+.rel-entry{margin-top:16px}
 .relbox details{border-bottom:0;margin-top:14px}.relbox summary{font-size:10px;padding:8px 0;letter-spacing:.06em}.relbox details>*:not(summary){padding-bottom:0}
+.infobox{margin:32px 0 0}.infobox:not([hidden])+.hero{padding-top:48px}
+.info-item{border:1px solid var(--line);background:var(--tint);padding:16px 18px}.info-item+.info-item{margin-top:12px}
+.info-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.info-top .label{letter-spacing:.2em}
+.info-close{flex:none;background:none;border:0;border-bottom:1px solid var(--line);padding:2px 0;font-size:11px;letter-spacing:.08em;color:var(--muted)}
+.info-close:hover{border-bottom-color:var(--text);color:var(--text)}
+.info-title{margin:10px 0 0;font-size:14px;font-weight:600;line-height:1.7;overflow-wrap:anywhere}
+.info-body{margin:6px 0 0;font-size:12px;line-height:1.9;color:var(--muted);white-space:pre-line;overflow-wrap:anywhere}
+.infobox a,.relbox a{color:var(--text);text-decoration:underline;text-underline-offset:3px}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -134,6 +142,7 @@ input.typing.keyin{font-size:15px;letter-spacing:.1em;text-transform:uppercase;f
   <header class="brand"><span class="brand-name">テンシで英単語<small class="brand-sub">実はブックマークなどに保存しておくと、<br>オフラインでも普通に開けます。<br>試しにネットを切ってリロードしてみてください。<br>ちなみに最初のダウンロードはインスタの画像一枚にも満たないです。</small></span><span id="net"></span><button class="theme-btn" id="theme" type="button">Dark</button></header>
   <main>
     <section id="home">
+      <div class="infobox" id="infoBox" hidden></div>
       <div class="hero"><p class="label">TODAY</p><p class="bigdate" id="today"></p><h1 id="heroTitle">今日の5問</h1></div>
       <button class="primary" id="start" disabled>読み込み中</button>
       <p class="sync" id="sync"></p>
@@ -521,35 +530,76 @@ function audioControls(w){
   b.append(row,rate,node('p','音が出ないときは、消音（マナー）モードをオフにしてください。','mini tts-note'),msg);return b;
 }
 
-/* ========== リリースノート（news.json）========== */
-// news.json の notes は新しい順（先頭が最新）。表示は textContent だけなので、HTMLは解釈されない。
+/* ========== お知らせ・リリースノート（news.json）========== */
+// news.json … {"information":[{id,title,body,date}], "notes":[{version,date,title,body}]}（どちらも新しい順）
+// 文字はすべて textContent で出す（HTMLは解釈しない）。リンクは [表示する文字](https://…) と [文字](mailto:…) の書き方だけが有効。
+const INFO_KEY='akuma_info_dismissed';   // 非表示にしたお知らせの id（この端末のlocalStorageに保存）
+function richText(s){
+  s=String(s==null?'':s);const out=[],re=/\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/g;let last=0,m;
+  while((m=re.exec(s))){
+    if(m.index>last)out.push(document.createTextNode(s.slice(last,m.index)));
+    const a=node('a',m[1]);a.setAttribute('href',m[2]);
+    if(/^https?:/.test(m[2])){a.setAttribute('target','_blank');a.setAttribute('rel','noopener noreferrer');}
+    out.push(a);last=m.index+m[0].length;
+  }
+  if(last<s.length)out.push(document.createTextNode(s.slice(last)));
+  return out;
+}
 function initNews(){
-  const btn=$('relBtn'),box=$('relBox');if(!btn||!box)return;
-  let notes=null,isOpen=false;
+  const btn=$('relBtn'),box=$('relBox'),ibox=$('infoBox');if(!btn||!box)return;
+  let notes=null,infos=null,isOpen=false;
+  const hiddenNow=new Set();   // 保存に失敗しても、この画面を開いている間は非表示のままにする
+  const readGone=()=>{try{const v=JSON.parse(localStorage.getItem(INFO_KEY)||'[]');return Array.isArray(v)?v.filter(x=>typeof x==='string'):[];}catch{return [];}};
+  const writeGone=a=>{try{localStorage.setItem(INFO_KEY,JSON.stringify(a));}catch{}};
+  const lines=b=>Array.isArray(b)?b:(b?[b]:[]);
+  const para=(t,cls)=>{const p=node('p',undefined,cls);p.append(...richText(t));return p;};
   const entry=(n,showTitle)=>{
     const d=node('div',undefined,'rel-entry');
     d.append(node('p',n.version+(n.date?'　'+n.date:''),'rel-head'));
     if(n.title&&showTitle)d.append(node('p',String(n.title),'rel-title'));
-    const items=Array.isArray(n.body)?n.body:(n.body?[n.body]:[]);
-    if(items.length){const ul=node('ul');items.forEach(t=>ul.append(node('li',String(t))));d.append(ul);}
+    const items=lines(n.body);
+    if(items.length){const ul=node('ul');items.forEach(t=>{const li=node('li');li.append(...richText(t));ul.append(li);});d.append(ul);}
     return d;
   };
-  const render=()=>{
+  const renderNotes=()=>{
     box.replaceChildren();
     if(!notes||!notes.length){box.append(node('p','リリースノートを読み込めませんでした。'));return;}
     box.append(entry(notes[0],false));
     if(notes.length>1){const det=node('details');det.append(node('summary','以前のリリースノート'));notes.slice(1).forEach(n=>det.append(entry(n,true)));box.append(det);}
   };
+  const renderInfo=()=>{
+    if(!ibox)return;
+    ibox.replaceChildren();
+    const gone=new Set(readGone()),list=(infos||[]).filter(i=>!gone.has(i.id)&&!hiddenNow.has(i.id));
+    list.forEach(i=>{
+      const item=node('div',undefined,'info-item'),top=node('div',undefined,'info-top'),close=node('button','非表示にする','info-close');
+      close.type='button';
+      top.append(node('span','INFORMATION'+(i.date?'　'+i.date:''),'label'),close);item.append(top);
+      if(i.title)item.append(node('p',String(i.title),'info-title'));
+      lines(i.body).forEach(t=>item.append(para(t,'info-body')));
+      close.addEventListener('click',()=>{
+        hiddenNow.add(i.id);
+        const alive=new Set((infos||[]).map(x=>x.id));   // もう news.json に無いお知らせの記録は捨てる
+        writeGone([...new Set([...readGone(),i.id])].filter(id=>alive.has(id)));
+        renderInfo();
+      });
+      ibox.append(item);
+    });
+    ibox.hidden=!list.length;
+  };
   const load=async()=>{
     try{
       const r=await fetch('news.json');if(!r.ok)throw new Error('http '+r.status);
-      const j=await r.json();notes=(Array.isArray(j.notes)?j.notes:[]).filter(n=>n&&typeof n.version==='string');
-    }catch{notes=null;}
+      const j=await r.json(),arr=x=>Array.isArray(x)?x:(x&&typeof x==='object'?[x]:[]);
+      notes=arr(j.notes).filter(n=>n&&typeof n.version==='string');
+      infos=arr(j.information).filter(i=>i&&typeof i.id==='string'&&i.id&&(i.title||i.body));
+    }catch{notes=null;infos=null;}
     if(notes&&notes.length){const n=notes[0];btn.textContent=n.version+' リリースノート'+(n.title?'｜'+String(n.title):'');}   // タイトルは閉じていても見える
+    renderInfo();
   };
   btn.addEventListener('click',async()=>{
     isOpen=!isOpen;btn.setAttribute('aria-expanded',String(isOpen));box.hidden=!isOpen;
-    if(isOpen){if(notes===null)await load();render();}
+    if(isOpen){if(notes===null)await load();renderNotes();}
   });
   load();
 }
