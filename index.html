@@ -118,6 +118,14 @@ select.sel:disabled{color:var(--muted);border-bottom-color:var(--line)}
 #mistakeList .mrow .secondary{margin-top:14px}
 input.typing.keyin{font-size:15px;letter-spacing:.1em;text-transform:uppercase;font-feature-settings:"tnum"}
 #linkBox .primary{margin-top:20px}#linkBox .secondary{margin-top:6px}
+.relnote{margin:28px 0 0;text-align:right}
+.reltoggle{background:none;border:0;padding:6px 0;font-size:9px;letter-spacing:.1em;line-height:1.7;color:var(--muted);opacity:.75;white-space:normal;text-align:right;max-width:100%}
+.reltoggle:hover{opacity:1;text-decoration:underline}
+.relbox{margin:8px 0 0;padding:14px 0 0;border-top:1px solid var(--line);font-size:11px;line-height:1.9;color:var(--muted)}
+.relbox p{margin:0}.relbox ul{margin:6px 0 0;padding-left:1.2em}.relbox li{margin:2px 0;overflow-wrap:anywhere}
+.rel-head{letter-spacing:.1em;color:var(--text)}.rel-title{font-weight:500;color:var(--text)}
+.rel-entry+.rel-entry{margin-top:16px}
+.relbox details{border-bottom:0;margin-top:14px}.relbox summary{font-size:10px;padding:8px 0;letter-spacing:.06em}.relbox details>*:not(summary){padding-bottom:0}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -187,7 +195,9 @@ input.typing.keyin{font-size:15px;letter-spacing:.1em;text-transform:uppercase;f
         単語については"アクマで英単語"からそのまま引っ張ってきているので、誤りがあることがあります。<br>
         誤りのご指摘、ご意見がある方はこちら →
       <a href="mailto:1@suiran.f5.si">1@suiran.f5.si</a>
-      
+      </p>
+      <p class="relnote"><button type="button" class="reltoggle" id="relBtn" aria-expanded="false" aria-controls="relBox">リリースノート</button></p>
+      <div class="relbox" id="relBox" hidden></div>
     </section>
     <section id="play" hidden></section>
     <section id="result" hidden></section>
@@ -509,6 +519,39 @@ function audioControls(w){
   TTS_RATES.forEach(r=>{const x=node('button',r.t);x.type='button';x.dataset.rate=String(r.v);x.setAttribute('aria-pressed',String(settings.ttsRate===r.v));
     x.addEventListener('click',()=>{settings.ttsRate=r.v;saveSettings();syncRateUI();});rate.append(x);});
   b.append(row,rate,node('p','音が出ないときは、消音（マナー）モードをオフにしてください。','mini tts-note'),msg);return b;
+}
+
+/* ========== リリースノート（news.json）========== */
+// news.json の notes は新しい順（先頭が最新）。表示は textContent だけなので、HTMLは解釈されない。
+function initNews(){
+  const btn=$('relBtn'),box=$('relBox');if(!btn||!box)return;
+  let notes=null,isOpen=false;
+  const entry=(n,showTitle)=>{
+    const d=node('div',undefined,'rel-entry');
+    d.append(node('p',n.version+(n.date?'　'+n.date:''),'rel-head'));
+    if(n.title&&showTitle)d.append(node('p',String(n.title),'rel-title'));
+    const items=Array.isArray(n.body)?n.body:(n.body?[n.body]:[]);
+    if(items.length){const ul=node('ul');items.forEach(t=>ul.append(node('li',String(t))));d.append(ul);}
+    return d;
+  };
+  const render=()=>{
+    box.replaceChildren();
+    if(!notes||!notes.length){box.append(node('p','リリースノートを読み込めませんでした。'));return;}
+    box.append(entry(notes[0],false));
+    if(notes.length>1){const det=node('details');det.append(node('summary','以前のリリースノート'));notes.slice(1).forEach(n=>det.append(entry(n,true)));box.append(det);}
+  };
+  const load=async()=>{
+    try{
+      const r=await fetch('news.json');if(!r.ok)throw new Error('http '+r.status);
+      const j=await r.json();notes=(Array.isArray(j.notes)?j.notes:[]).filter(n=>n&&typeof n.version==='string');
+    }catch{notes=null;}
+    if(notes&&notes.length){const n=notes[0];btn.textContent=n.version+' リリースノート'+(n.title?'｜'+String(n.title):'');}   // タイトルは閉じていても見える
+  };
+  btn.addEventListener('click',async()=>{
+    isOpen=!isOpen;btn.setAttribute('aria-expanded',String(isOpen));box.hidden=!isOpen;
+    if(isOpen){if(notes===null)await load();render();}
+  });
+  load();
 }
 
 /* ========== 解説 ========== */
@@ -928,7 +971,7 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
   $('rankBtn').addEventListener('click',async()=>{const btn=$('rankBtn');btn.disabled=true;try{await showRankInto($('rank'));}finally{btn.disabled=false;}});
   $('rankBox').addEventListener('toggle',()=>{if($('rankBox').open)showRankInto($('rank'));});
   addEventListener('online',()=>{const b=$('resultRank');if(b&&b.isConnected&&!$('result').hidden)showRankInto(b);});
-  bindLink();portalLinkFromHash();addEventListener('hashchange',portalLinkFromHash);
+  bindLink();portalLinkFromHash();addEventListener('hashchange',portalLinkFromHash);initNews();
   $('histBox').addEventListener('toggle',()=>{if($('histBox').open)renderHistory();});
   try{
     if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{}); // 単語データ読み込みの成否に関係なく登録
