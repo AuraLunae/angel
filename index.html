@@ -961,10 +961,11 @@ async function begin(kind,opts){
 }
 function setToday(){const d=new Date(Date.now()+32400000);$('today').textContent=String(d.getUTCMonth()+1).padStart(2,'0')+'.'+String(d.getUTCDate()).padStart(2,'0');}
 async function goHome(){
-  askUpdateCheck();
   if(updateReady&&reloadForUpdate())return;   // 新しい版を取り終えていたら、トップに戻るこのタイミングで更新
   setToday();show('home');refreshSync();updateStart();renderMistakes();
   if($('worstBox').open)renderWorst();
+  await askUpdateCheck(3000);                 // まだなら、いま確認して結果を待つ。更新があればそのままトップで切り替える
+  applyIfIdle();
 }
 async function updateStart(){
   const b=$('start'),active=await dbMeta('active'),s=active&&await dbGet('sets',active);
@@ -1032,7 +1033,18 @@ async function renderWorst(){
    回答・設定は端末内（IndexedDB）に保存済みなので、再読み込みしても失われない。 */
 let updateReady=false;
 const swCtl=()=>('serviceWorker' in navigator)?navigator.serviceWorker.controller:null;
-function askUpdateCheck(){try{const c=swCtl();if(c)c.postMessage({type:'check-update'});}catch{}}
+let hadCtl=false;   // このページを開いた時点で、すでにSWの管理下だったか
+// SWに更新確認を頼み、結果（更新あり/なし）を待つ。wait ミリ秒たっても返らなければ待たずに進む。
+function askUpdateCheck(wait){
+  const c=swCtl();if(!c)return Promise.resolve();
+  return new Promise(res=>{
+    const ch=new MessageChannel();let t=0;
+    ch.port1.onmessage=e=>{clearTimeout(t);if(e.data&&e.data.updated&&hadCtl)updateReady=true;res();};
+    t=setTimeout(res,wait||1);
+    try{c.postMessage({type:'check-update'},[ch.port2]);}catch{clearTimeout(t);res();}
+  });
+}
+const applyIfIdle=()=>{if(updateReady&&homeIdle())reloadForUpdate();};
 function homeIdle(){   // トップ画面で、入力の途中ではない
   const a=document.activeElement;
   return !$('home').hidden&&!(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))&&!($('linkKey')&&$('linkKey').value);
@@ -1047,15 +1059,15 @@ function reloadForUpdate(){
 }
 function setupUpdates(){
   if(!('serviceWorker' in navigator))return;
-  const had=!!navigator.serviceWorker.controller;   // 初回インストール直後は、すでに最新なので何もしない
+  const had=hadCtl=!!navigator.serviceWorker.controller;   // 初回インストール直後は、すでに最新なので何もしない
   navigator.serviceWorker.addEventListener('message',e=>{if(had&&e.data&&e.data.type==='akuma-updated')updateReady=true;});
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had)updateReady=true;});
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState!=='visible')return;
-    askUpdateCheck();
-    if(updateReady&&homeIdle())reloadForUpdate();
+    if(updateReady&&homeIdle())return reloadForUpdate();
+    askUpdateCheck(3000).then(applyIfIdle);
   });
-  askUpdateCheck();
+  askUpdateCheck(3000).then(applyIfIdle);   // 起動直後：古い版が出ていたら、裏で見つけ次第すぐ新しい版へ
 }
 async function refreshSync(){
   const S=window.AKUMA_SYNC;let t='';
