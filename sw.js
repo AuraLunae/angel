@@ -3,10 +3,10 @@
 //       更新は裏で「全ファイルをまとめて」確認する。変わったものを全部取り終えてから、一括でキャッシュに入れ、
 //       ページへ 'akuma-updated' を送る。ページはリロードを待たず、トップに戻ったときに新しい版へ切り替わる。
 //       （一部だけ新しい、という中途半端な状態は作らない）
-const VERSION='akuma-v24';
+const VERSION='akuma-v25';
 const CORE=['config.js','sync.js','manifest.json','data/words.json']; // これが取れないとインストール失敗（古いSWが残る）
 const EXTRA=['news.json','icons/icon.svg','icons/icon-180.png','icons/icon-192.png','icons/icon-512.png']; // 取れなくてもOK
-const RECHECK_MS=5*60*1000;   // 更新確認は5分に1回まで（遅い回線で通信を増やさない）
+const RECHECK_MS=20*1000;     // 更新確認は20秒に1回まで。変更なしなら小さな問い合わせ（304）だけなので軽い
 const BG_TIMEOUT=90000;       // 裏の更新確認は90秒で打ち切る（変更があったときは大きいファイルも落とすため長め）
 
 const cacheable=res=>!!res&&res.ok&&res.type==='basic';
@@ -68,8 +68,8 @@ async function probe(key,url,signal){
 // すべてのファイルを確認 → 全部取れたら一括で入れ替え → ページへ通知
 function checkAll(force){
   if(running)return running;
-  if(self.navigator&&self.navigator.onLine===false)return Promise.resolve();
-  if(!force&&Date.now()-lastCheck<RECHECK_MS)return Promise.resolve();
+  if(self.navigator&&self.navigator.onLine===false)return Promise.resolve(false);
+  if(!force&&Date.now()-lastCheck<RECHECK_MS)return Promise.resolve(false);
   lastCheck=Date.now();
   running=(async()=>{
     const t=new AbortController(),timer=setTimeout(()=>t.abort(),BG_TIMEOUT);
@@ -81,11 +81,11 @@ function checkAll(force){
         Promise.all(opt.map(([k,u])=>probe(k,u,t.signal).catch(()=>null)))          // アイコン等は取れなくてもよい
       ]);
       const changed=[...a,...b].filter(Boolean);
-      if(!changed.length)return;
+      if(!changed.length)return false;
       const c=await caches.open(VERSION);
       for(const x of changed)await c.put(x.key,x.res);                              // ここまで来て初めてキャッシュを書き換える
-      await notify();
-    }catch(_){lastCheck=0;}   // 失敗したら次回また確認する
+      await notify();return true;
+    }catch(_){lastCheck=0;return false;}   // 失敗したら次回また確認する
     finally{clearTimeout(timer);running=null;}
   })();
   return running;
@@ -115,7 +115,9 @@ async function assetFirst(e,r){
 
 // ページからの「更新があるか確認して」。使いっぱなしのアプリ（リロードしない）でも新しい版に気づけるようにする。
 self.addEventListener('message',e=>{
-  if(e.data&&e.data.type==='check-update')keep(e,checkAll(false));
+  if(!e.data||e.data.type!=='check-update')return;
+  const port=e.ports&&e.ports[0];   // 結果（更新あり/なし）をページへ返す。ページはこれを待ってから切り替える
+  keep(e,checkAll(false).then(u=>{try{if(port)port.postMessage({updated:!!u});}catch(_){}}));
 });
 
 self.addEventListener('fetch',e=>{
