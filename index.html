@@ -80,9 +80,12 @@ details details{border-bottom:0}details details summary{color:var(--muted);font-
 input.typing{width:100%;background:none;border:0;border-bottom:1px solid var(--text);border-radius:0;color:var(--text);padding:10px 0;font:inherit;font-size:28px;font-weight:300;letter-spacing:.04em;margin:8px 0 14px}
 form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
 .eyebrow{font-size:11px;color:var(--muted);margin-top:40px;letter-spacing:.2em}
-.word-sub{margin:6px 0 0}.word-sub p{margin:0;font-size:13px;line-height:1.8;color:var(--muted);overflow-wrap:anywhere}
-.word-sub .ipa{font-size:17px;color:var(--text);letter-spacing:.03em;font-family:"Lucida Sans Unicode","Segoe UI","Noto Sans","DejaVu Sans","Arial Unicode MS",-apple-system,sans-serif}
-.word-sub .ety{margin-top:2px}
+.headword{margin:24px 0 6px;padding:18px 0 6px;border-top:1px solid var(--line)}
+.headword .label{margin:0 0 4px;letter-spacing:.24em}
+.hw-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px}
+.hw-word{font-size:42px;font-weight:400;line-height:1.25;letter-spacing:.01em;overflow-wrap:anywhere}
+.headword .ipa{font-size:18px;color:var(--text);letter-spacing:.03em;overflow-wrap:anywhere;font-family:"Lucida Sans Unicode","Segoe UI","Noto Sans","DejaVu Sans","Arial Unicode MS",-apple-system,sans-serif}
+.headword .ety{margin:6px 0 0;font-size:14px;line-height:1.8;color:var(--muted);overflow-wrap:anywhere}
 .worst-row+.worst-row{margin-top:4px}.worst-row .mini{margin:0 0 8px;padding-left:1.7em}
 .feedback-title{font-size:28px;font-weight:300;margin:8px 0 24px;line-height:1.3;letter-spacing:.08em}.good{color:var(--good)}.bad{color:var(--bad)}
 .answer-box{padding:0;margin:0 0 8px}.answer-box p{margin:2px 0}.answer-box strong{font-weight:600}
@@ -631,12 +634,15 @@ function etymologyRows(w){
 }
 // 発音記号：「ˈsʌbdʒɪkt (名・形) / səbˈdʒekt (動)」→「/ˈsʌbdʒɪkt/ (名・形) ／ /səbˈdʒekt/ (動)」
 function ipaView(s){return String(s).split(' / ').map(p=>{const m=/^(.*?)(\s*\([^)]*\))?$/.exec(p);return '/'+m[1]+'/'+(m[2]||'');}).join(' ／ ');}
-// 単語の下に出す、発音記号と簡潔な語源（例：en(動詞化)+rich(豊かな)）。どちらも無ければ何も出さない
-function wordSub(w){
-  const d=node('div',undefined,'word-sub');
-  if(w.ipa)d.append(node('p',ipaView(w.ipa),'ipa'));
+// 答え合わせの主役：正解の単語を大きく、発音記号はその横、簡潔な語源（例：en(動詞化)+rich(豊かな)）は真下
+function headword(w,label){
+  const d=node('div',undefined,'headword'),row=node('div',undefined,'hw-row');
+  d.append(node('p',label,'label'));
+  row.append(node('span',w.word,'hw-word'));
+  if(w.ipa)row.append(node('span',ipaView(w.ipa),'ipa'));
+  d.append(row);
   if(w.ety)d.append(node('p','語源　'+w.ety,'ety'));
-  d.hidden=!d.childNodes.length;return d;
+  return d;
 }
 function learningBlock(w,expanded,skipSub){
   const block=node('div'),dl=node('dl',undefined,'learning');
@@ -715,9 +721,10 @@ function renderFeedback(set,it){
   show('play');const area=$('play'),w=byId[it.wordId],q=qOf(it),a=it.ans;
   area.replaceChildren(...banners(set,it,w),progress(set));
   const card=node('div',undefined,'card');
-  card.append(node('div','LEAP '+w.leapNo+' / '+w.word,'eyebrow'),wordSub(w),node('h2',a.correct?'正解':'不正解','feedback-title '+(a.correct?'good':'bad')));
+  card.append(node('div','LEAP '+w.leapNo,'eyebrow'),node('h2',a.correct?'正解':'不正解','feedback-title '+(a.correct?'good':'bad')));
   const box=node('div',undefined,'answer-box');box.append(node('p','あなたの答え：'+a.selected));
-  const c=node('p','正解：');c.append(node('strong',q.type==='typing'?w.word:q.options[q.correctIndex]));box.append(c);
+  if(q.type==='meaning_mcq'){const c=node('p','正解：');c.append(node('strong',q.options[q.correctIndex]));box.append(c);}   // 日本語を選ぶ問題は、正解の意味も出す
+  box.append(headword(w,q.type==='meaning_mcq'?'単語':'正解'));
   const g=glossBlock(w,q,a);if(g)box.append(g);
   card.append(box,learningBlock(w,false,true),node('div',reviewText(a.review,it.kind),'review-note'));
   if(a.correct&&set.kind!=='mistake'){
