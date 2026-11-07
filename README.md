@@ -5,5 +5,17 @@
 2. そこで、毎回、ページを読み込まなくてもいいと思い、完全オフラインで動作するページを開発しました
 4. 語源データヘビーユーザーの自分としては、語源データが、あまちゃんだと思ったので、そこを改善しました
 
+‘‘‘
+[端末]                                         [Supabase]
+IndexedDB(akuma)                               auth.users(匿名ユーザー)
+ ├ answers  ← 回答の全記録(端末だけ)            daily_counts(user_id, day, answers)
+ ├ review   ← 復習状態(端末だけ)                      ▲
+ ├ sets                                              │ RPC: sync_daily
+ └ meta     ← session(トークン)/device/設定           │ RPC: get_ranking
+        │                                            │
+        └── sync.js が answers を日別に数えて ────────┘
+            {"2026-11-01":12, ...} を送信
+‘‘‘
+
 適当なので、解説しません  
 ただ、オフラインにしてから、リロードができることは言っておきます。
