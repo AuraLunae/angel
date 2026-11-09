@@ -6,7 +6,7 @@
    "title": "G探データURLの改定",
    "body": [
     "前回公開したURLが開けないことに気づきました。",
-    "ダウンロードは[こちらのファイル一覧](https://suiran-sangaku.pages.dev/private/)からできます。"
+    "ダウンロードは[こちらのファイル一覧](https://suiran-sangaku.pages.dev/private/)からできます。",
     "ちなみにフォールバック用にPNGでのファイルを入れていますが、画質が非常に悪いので、svgを見ることをおすすめします"
    ]
   },
