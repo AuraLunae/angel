@@ -1,5 +1,14 @@
 {
  "information": [
+    {
+   "id": "2026-11-09-survey-ab",
+   "date": "2026-11-09",
+   "title": "G探データURLの改定",
+   "body": [
+    "前回公開したURLが開けないことに気づきました。",
+    "ダウンロードは[こちらのファイル一覧](https://suiran-sangaku.pages.dev/)からできます。"
+   ]
+  },
   {
    "id": "2026-11-06-survey-ab",
    "date": "2026-11-06",
