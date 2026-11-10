@@ -7,7 +7,7 @@
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="テンシ英単語">
-<script>try{var t=localStorage.getItem('akuma_theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}
+<script>try{var t=localStorage.getItem('akuma_theme'),d=t==='dark';if(t==='auto'){var h=new Date().getHours();d=h>=18||h<6;}if(d)document.documentElement.dataset.theme='dark';}catch(e){}
 try{if(sessionStorage.getItem('akuma_fade')){sessionStorage.removeItem('akuma_fade');document.documentElement.classList.add('fade-in');}}catch(e){}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -149,7 +149,7 @@ body{transition:opacity .2s ease}body.fade-out{opacity:0}
 </head>
 <body>
 <div class="shell">
-  <header class="brand"><span class="brand-name">テンシで英単語<small class="brand-sub">実はブックマークなどに保存しておくと、<br>オフラインでも普通に開けます。<br>試しにネットを切ってリロードしてみてください。<br>ちなみに最初のダウンロードはインスタの画像一枚にも満たないです。</small></span><span id="net"></span><button class="theme-btn" id="theme" type="button">Dark</button></header>
+  <header class="brand"><span class="brand-name">テンシで英単語<small class="brand-sub">実はブックマークなどに保存しておくと、<br>オフラインでも普通に開けます。<br>試しにネットを切ってリロードしてみてください。<br>ちなみに最初のダウンロードはインスタの画像一枚にも満たないです。</small></span><span id="net"></span><button class="theme-btn" id="theme" type="button">Light</button></header>
   <main>
     <section id="home">
       <div class="infobox" id="infoBox" hidden></div>
@@ -380,11 +380,18 @@ async function makeMistakeSet(){
 const isDone=s=>s.items.every(i=>i.ans);
 const qOf=it=>byId[it.wordId].questions.find(q=>q.questionId===it.questionId);
 
+const AUTO_REMOVE_STREAK=3;   // この回数だけ連続で正解したら、間違えた問題リストから自動で外す
+const streakOf=rv=>Number.isInteger(rv.streak)?rv.streak:rv.stage;   // 旧データ（streak無し）は、おさらいで正解した回数＝stageで代用
 function updateReview(rv,wordId,kind,correct,day){
-  if(!correct)return {wordId,stage:0,status:'ACTIVE',nextDate:addDays(day,INTERVALS[0])};
-  if(kind==='REVIEW'&&rv&&rv.status==='ACTIVE'){
-    if(rv.stage>=INTERVALS.length-1)return {...rv,status:'MASTERED',nextDate:null};
-    const s=rv.stage+1;return {...rv,stage:s,nextDate:addDays(day,INTERVALS[s])};
+  if(!correct)return {wordId,stage:0,status:'ACTIVE',nextDate:addDays(day,INTERVALS[0]),streak:0};   // 間違えたら連続正解は0から
+  if(rv&&rv.status==='ACTIVE'){
+    const streak=streakOf(rv)+1;
+    if(streak>=AUTO_REMOVE_STREAK)return {wordId,stage:rv.stage,status:'REMOVED',nextDate:null,streak};   // 手動削除と同じ REMOVED（また間違えたら ACTIVE に戻る）
+    if(kind==='REVIEW'){
+      if(rv.stage>=INTERVALS.length-1)return {...rv,status:'MASTERED',nextDate:null,streak};
+      const s=rv.stage+1;return {...rv,stage:s,nextDate:addDays(day,INTERVALS[s]),streak};
+    }
+    return {...rv,streak};   // 通常の出題で正解した場合も、連続正解に数える
   }
   return null;
 }
@@ -408,7 +415,7 @@ async function submit(set,slotNo,value){
   refreshSync();if(window.AKUMA_SYNC)AKUMA_SYNC.kick();return ans;
 }
 async function selfReview(set,slotNo){
-  const it=set.items[slotNo-1],day=JST(Date.now()),rv={wordId:it.wordId,stage:0,status:'ACTIVE',nextDate:addDays(day,INTERVALS[0]),updatedAt:Date.now(),dirty:1};
+  const it=set.items[slotNo-1],day=JST(Date.now()),rv={wordId:it.wordId,stage:0,status:'ACTIVE',nextDate:addDays(day,INTERVALS[0]),streak:0,updatedAt:Date.now(),dirty:1};
   await commit([['review',rv]]);if(window.AKUMA_SYNC)AKUMA_SYNC.kick();return rv.nextDate;
 }
 
@@ -425,6 +432,7 @@ function progress(set){
 }
 function reviewText(rv,kind){
   if(!rv)return '復習予定なし';
+  if(rv.status==='REMOVED')return AUTO_REMOVE_STREAK+'回連続で正解。間違えた問題リストから外しました';
   if(rv.status==='MASTERED')return kind==='REVIEW'?'習得済み（30日後も正解）':'習得済み';
   return '次のおさらい　'+rv.nextDate;
 }
@@ -767,7 +775,7 @@ function renderResult(set){
   const rv=node('div',undefined,'card result-card');rv.append(node('h2','おさらい予定'));
   const rl=fb.filter(x=>x.a.review);
   if(!rl.length)rv.append(node('p','なし'));
-  else{const ul=node('ul',undefined,'review-list');rl.forEach(x=>{const li=node('li');li.append(node('span',x.w.word),node('time',x.a.review.status==='MASTERED'?'習得済み':x.a.review.nextDate));ul.append(li);});rv.append(ul);}
+  else{const ul=node('ul',undefined,'review-list');rl.forEach(x=>{const li=node('li');li.append(node('span',x.w.word),node('time',x.a.review.status==='MASTERED'?'習得済み':x.a.review.status==='REMOVED'?'リストから外した':x.a.review.nextDate));ul.append(li);});rv.append(ul);}
   area.append(rv);
   const rc=node('div',undefined,'card result-card');rc.append(node('h2',set.kind==='mistake'?'この復習の解説を見返す':'この'+set.items.length+'問の解説を見返す'));
   fb.forEach(x=>{const d=node('details');d.append(node('summary',(x.a.correct?'正解　':'不正解　')+x.w.word+'　'+x.w.meaning),learningBlock(x.w));rc.append(d);});area.append(rc);
@@ -868,6 +876,10 @@ function portalLinkFromHash(){
 const HINT_MAX=5;
 const MODES=['mixed','choice','typing'];
 const qOk=v=>Number.isSafeInteger(v)&&v>=1;   // 1回の問題数：1以上ならいくつでもよい（上限なし）
+const THEMES=['auto','light','dark'];   // 押すたびに Auto → Light → Dark
+const NIGHT_FROM=18,NIGHT_TO=6;         // 18:00〜翌6:00 はダーク（端末の時刻）
+const isNight=()=>{const h=new Date().getHours();return h>=NIGHT_FROM||h<NIGHT_TO;};
+const storedTheme=()=>{try{const t=localStorage.getItem('akuma_theme');if(THEMES.includes(t))return t;}catch{}return 'light';};
 let settings={hintLen:2,theme:'light',qMode:'mixed',qCount:5,ttsRate:.86,ttsVoice:''};
 async function loadSettings(){
   let st=null;try{st=await dbMeta('settings');}catch{}
@@ -875,9 +887,9 @@ async function loadSettings(){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
     if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(qOk(st.qCount))settings.qCount=st.qCount;
     if([.7,.86,1].includes(st.ttsRate))settings.ttsRate=st.ttsRate;if(typeof st.ttsVoice==='string'&&st.ttsVoice.length<=300)settings.ttsVoice=st.ttsVoice;
-    if(st.theme==='dark'||st.theme==='light')settings.theme=st.theme;
+    if(THEMES.includes(st.theme))settings.theme=st.theme;
     applyTheme(settings.theme);
-  }else{settings.theme=document.documentElement.dataset.theme==='dark'?'dark':'light';}
+  }else{settings.theme=storedTheme();applyTheme(settings.theme);}
   try{localStorage.setItem('akuma_theme',settings.theme);}catch{} // 起動直後のちらつき防止用に、テーマだけlocalStorageにも写す
 }
 function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,qCount:settings.qCount,ttsRate:settings.ttsRate,ttsVoice:settings.ttsVoice,savedAt:Date.now()}).catch(()=>{});}
@@ -935,7 +947,7 @@ async function importBackup(file){
   for(const r of j.review){ // 復習状態は、新しい方を採用
     if(!okR(r))continue;const cur=haveR.get(r.wordId);
     if(cur&&(cur.updatedAt||0)>=(r.updatedAt||0))continue;
-    nr++;writes.push(['review',{wordId:r.wordId,stage:r.stage,status:r.status,nextDate:r.status==='ACTIVE'?r.nextDate:null,updatedAt:r.updatedAt||0,dirty:0}]);
+    nr++;writes.push(['review',{wordId:r.wordId,stage:r.stage,status:r.status,nextDate:r.status==='ACTIVE'?r.nextDate:null,...(Number.isInteger(r.streak)?{streak:r.streak}:{}),updatedAt:r.updatedAt||0,dirty:0}]);
   }
   for(let i=0;i<writes.length;i+=500)await commit(writes.slice(i,i+500));
   const lr=j.lastRange;
@@ -945,7 +957,7 @@ async function importBackup(file){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
     if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(qOk(st.qCount))settings.qCount=st.qCount;
     if([.7,.86,1].includes(st.ttsRate))settings.ttsRate=st.ttsRate;if(typeof st.ttsVoice==='string'&&st.ttsVoice.length<=300)settings.ttsVoice=st.ttsVoice;
-    if(st.theme==='dark'||st.theme==='light'){settings.theme=st.theme;applyTheme(st.theme);try{localStorage.setItem('akuma_theme',st.theme);}catch{}}
+    if(THEMES.includes(st.theme)){settings.theme=st.theme;applyTheme(st.theme);try{localStorage.setItem('akuma_theme',st.theme);}catch{}}
     await saveSettings();renderHintSeg();renderModeSeg();syncCountInput();renderHero();renderTtsUI();
   }
   if(window.AKUMA_SYNC)AKUMA_SYNC.syncNow();   // 復元した回答の日別数もサーバーへ反映
@@ -1001,7 +1013,7 @@ async function renderMistakes(){
     row.addEventListener('toggle',()=>{ // 中身は開いた時に作る（件数が多くても軽く）
       if(!row.open||row.dataset.built)return;row.dataset.built='1';
       const info=node('div');
-      info.append(statRow('LEAP',String(w.leapNo)),statRow('次のおさらい',x.rv.nextDate),statRow('問題の形式',(w.questions.find(q=>!q.gen)||{}).type==='typing'?'綴り':'選択'));
+      info.append(statRow('LEAP',String(w.leapNo)),statRow('連続正解',Math.min(streakOf(x.rv),AUTO_REMOVE_STREAK)+' / '+AUTO_REMOVE_STREAK+'回'),statRow('次のおさらい',x.rv.nextDate),statRow('問題の形式',(w.questions.find(q=>!q.gen)||{}).type==='typing'?'綴り':'選択'));
       if(x.last)info.append(statRow('間違えた回数',x.count+'回'),statRow('最後に間違えた日',x.last.day),statRow('そのときの答え',x.last.selected||'—'));
       else info.append(statRow('きっかけ','偶然の正解からおさらいに追加'));
       const rm=node('button','復習リストから削除','secondary');rm.type='button';rm.addEventListener('click',drop(x.wordId));
@@ -1107,15 +1119,19 @@ async function renderHistory(){
     catch(e){msg.textContent=e.message||'復元できませんでした。';}});
   box.append(ex,imp,fi,msg);
 }
-function applyTheme(t){const d=t==='dark';document.documentElement.dataset.theme=d?'dark':'light';
-  const b=$('theme');b.textContent=d?'Light':'Dark';b.setAttribute('aria-label',d?'ホワイトモードに切り替え':'ダークモードに切り替え');
+function applyTheme(t){if(!THEMES.includes(t))t='light';
+  const d=t==='auto'?isNight():t==='dark';document.documentElement.dataset.theme=d?'dark':'light';
+  const b=$('theme'),name={auto:'Auto',light:'Light',dark:'Dark'}[t],next={auto:'ホワイト',light:'ダーク',dark:'自動（夜はダーク・朝はホワイト）'}[t];
+  b.textContent=name;b.setAttribute('aria-label','表示モード：'+({auto:'自動',light:'ホワイト',dark:'ダーク'}[t])+'。押すと'+next+'に切り替え');
   document.querySelector('meta[name=theme-color]').content=d?'#121212':'#fcfcfb';}
 function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
 
 /* ========== 起動 ========== */
 (async function init(){
-  setToday();applyTheme(document.documentElement.dataset.theme==='dark'?'dark':'light');
-  $('theme').addEventListener('click',()=>{const t=document.documentElement.dataset.theme==='dark'?'light':'dark';applyTheme(t);settings.theme=t;try{localStorage.setItem('akuma_theme',t);}catch{}saveSettings();});
+  setToday();applyTheme(storedTheme());
+  $('theme').addEventListener('click',()=>{const t=THEMES[(THEMES.indexOf(settings.theme)+1)%THEMES.length];applyTheme(t);settings.theme=t;try{localStorage.setItem('akuma_theme',t);}catch{}saveSettings();});
+  const tick=()=>{if(settings.theme==='auto')applyTheme('auto');};   // Autoのときは、時刻が変わったら自動で切り替える
+  setInterval(tick,60*1000);document.addEventListener('visibilitychange',tick);addEventListener('pageshow',tick);
   addEventListener('online',netLabel);addEventListener('offline',netLabel);netLabel();
   $('rangeForm').addEventListener('submit',e=>{e.preventDefault();const f=+$('rFrom').value,t=+$('rTo').value;
     if(!Number.isInteger(f)||!Number.isInteger(t)||f<1||t>2300||t-f<4)return setError('LEAP番号1〜2300で、5語以上の範囲を指定してください。');
