@@ -175,6 +175,11 @@ body{transition:opacity .2s ease}body.fade-out{opacity:0}
               <p class="mini" id="modeNote"></p>
             </div>
             <div class="set-group">
+              <p class="label">選択問題の向き</p>
+              <div class="seg" id="cDirSeg" role="group" aria-label="選択問題の向き"></div>
+              <p class="mini" id="cDirNote"></p>
+            </div>
+            <div class="set-group">
               <label>1回の問題数<input class="typing" id="qCountIn" type="number" min="1" value="5" inputmode="numeric"></label>
               <p class="mini">初期値は5問。1問以上、好きな数に変えられる（上限なし）。単語が足りないときは、出せる分だけ出る。</p>
             </div>
@@ -282,6 +287,17 @@ const letterCount=w=>{const n=answerForms(w).map(f=>f.replace(/[^a-z]/g,'').leng
 const SPELLABLE=w=>answerForms(w).every(f=>/^[a-z]+(?:[ -][a-z]+)*$/.test(f));   // 英字・空白・ハイフンだけなら綴りで答えられる
 function genQuestions(){
   const byPos={};words.forEach(w=>{(byPos[w.pos]=byPos[w.pos]||[]).push(w);});
+  // 選択問題を1つ作る。asMeaning=true →「英語→日本語」(meaning_mcq)、false →「日本語→英語」(word_mcq)。r は単語ごとの固定乱数。
+  const mkChoice=(w,asMeaning,r)=>{
+    const key=x=>asMeaning?norm(x.meaning):norm(x.word),mine=key(w);
+    const same=(byPos[w.pos]||[]).filter(y=>y!==w),pool=same.length>=12?same:words.filter(y=>y!==w);   // 同じ品詞から選ぶ（まぎらわしくなる）
+    const bad=new Set([mine]),wrong=[];
+    for(let t=0;wrong.length<3&&t<200;t++){const y=pool[Math.floor(r()*pool.length)],k=key(y);if(!bad.has(k)){bad.add(k);wrong.push(y);}}
+    const opts=shuffle([w,...wrong],r),txt=y=>asMeaning?y.meaning:y.word;
+    return asMeaning
+      ?{questionId:w.wordId+'_GJA',type:'meaning_mcq',kind:'NEW',gen:true,prompt:'「'+w.word+'」の意味を選べ。',options:opts.map(txt),correctIndex:opts.indexOf(w),questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'}
+      :{questionId:w.wordId+'_GEN',type:'word_mcq',kind:'NEW',gen:true,prompt:'「'+w.meaning+'」（'+w.pos+'）を表す見出し語を選べ。\nLEAP '+w.leapNo,options:opts.map(txt),correctIndex:opts.indexOf(w),questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'};
+  };
   for(const w of words){
     const hasT=w.questions.some(q=>q.type==='typing'),hasC=w.questions.some(q=>q.type!=='typing');
     if(!hasT&&SPELLABLE(w)){
@@ -291,26 +307,35 @@ function genQuestions(){
     }
     if(!hasC){
       const r=rng(w.wordId+':gen'),asMeaning=r()<.57;                    // 既存の比率（意味を選ぶ:語を選ぶ ≒ 57:43）に合わせる
-      const key=x=>asMeaning?norm(x.meaning):norm(x.word),mine=key(w);
-      const same=(byPos[w.pos]||[]).filter(y=>y!==w),pool=same.length>=12?same:words.filter(y=>y!==w);   // 同じ品詞から選ぶ（まぎらわしくなる）
-      const bad=new Set([mine]),wrong=[];
-      for(let t=0;wrong.length<3&&t<200;t++){const y=pool[Math.floor(r()*pool.length)],k=key(y);if(!bad.has(k)){bad.add(k);wrong.push(y);}}
-      const opts=shuffle([w,...wrong],r),txt=y=>asMeaning?y.meaning:y.word;
-      w.questions.push(asMeaning
-        ?{questionId:w.wordId+'_GJA',type:'meaning_mcq',kind:'NEW',gen:true,prompt:'「'+w.word+'」の意味を選べ。',options:opts.map(txt),correctIndex:opts.indexOf(w),questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'}
-        :{questionId:w.wordId+'_GEN',type:'word_mcq',kind:'NEW',gen:true,prompt:'「'+w.meaning+'」（'+w.pos+'）を表す見出し語を選べ。\nLEAP '+w.leapNo,options:opts.map(txt),correctIndex:opts.indexOf(w),questionExplanation:'LEAP '+w.leapNo+' の見出し語と意味を確認しよう。'});
+      w.questions.push(mkChoice(w,asMeaning,r));
     }
+    // 向きの設定のため、足りない向きの選択問題も作る（元の問題は変えない。同じ単語なら毎回同じ問題・選択肢）
+    for(const t of ['meaning_mcq','word_mcq'])
+      if(!w.questions.some(q=>q.type===t))w.questions.push(mkChoice(w,t==='meaning_mcq',rng(w.wordId+':gen2:'+t)));
   }
 }
 
 /* ========== 出題 ========== */
 // 元データでは1つの単語につき問題の形式は1種類（綴り or 選択）。
 // 「選択のみ」「綴りのみ」では、元の問題が無い語に対して、起動時に自動生成した問題(gen:true)を使う。ランダムでは元の問題だけ。
-const qsFor=(w,mode)=>{
-  if(mode!=='typing'&&mode!=='choice')return w.questions.filter(q=>!q.gen);
-  const ok=q=>mode==='typing'?q.type==='typing':q.type!=='typing',orig=w.questions.filter(q=>!q.gen&&ok(q));
-  return orig.length?orig:w.questions.filter(q=>q.gen&&ok(q));
+const CTYPE={en2ja:'meaning_mcq',ja2en:'word_mcq'};   // 英語→日本語 = 日本語を選ぶ、日本語→英語 = 英語を選ぶ
+// 選択問題の向き設定に合う問題。向き指定あり：その向きの問題（元の問題を優先、無ければ自動生成）。ランダム：両方の向きから。
+const choiceQs=w=>{
+  const cs=w.questions.filter(q=>q.type!=='typing'),t=CTYPE[settings.cDir];
+  if(!t)return cs;
+  const m=cs.filter(q=>q.type===t),o=m.filter(q=>!q.gen);return o.length?o:m;
 };
+const qsFor=(w,mode)=>{
+  if(mode==='choice')return choiceQs(w);
+  if(mode!=='typing'){   // ランダム(綴り＋選択)：元の問題だけ。向きを指定しているときは、向きの違う選択問題を入れ替える
+    const o=w.questions.filter(q=>!q.gen);
+    if(!CTYPE[settings.cDir])return o;
+    return o.map(q=>q.type==='typing'||q.type===CTYPE[settings.cDir]?q:(choiceQs(w)[0]||q));
+  }
+  const orig=w.questions.filter(q=>!q.gen&&q.type==='typing');
+  return orig.length?orig:w.questions.filter(q=>q.gen&&q.type==='typing');
+};
+const sigOf=()=>settings.qMode+(CTYPE[settings.cDir]?'/'+settings.cDir:'')+':'+settings.qCount;   // 設定が変わったら今日の未回答セットを作り直す目印
 const fits=(w,mode)=>qsFor(w,mode||settings.qMode).length>0;
 async function makeSet(kind,opts={}){
   const day=JST(Date.now()),sets=await dbAll('sets'),dayAll=sets.filter(s=>s.day===day);
@@ -338,7 +363,7 @@ async function makeSet(kind,opts={}){
   };
   const items=shuffle([...rev.map(x=>mk(byId[x.wordId],'REVIEW')),...picks.map(w=>mk(w,'NEW'))],r).map((it,i)=>({slotNo:i+1,...it}));
   if(!items.length)throw new Error('この条件で出せる問題がありません。範囲か出題形式を変えてください。');
-  const set={id,kind,day,range:kind==='range'?{from:lo,to:hi}:null,items,sig:mode+':'+N,created:Date.now()};
+  const set={id,kind,day,range:kind==='range'?{from:lo,to:hi}:null,items,sig:sigOf(),created:Date.now()};
   await commit([['sets',set]]);return set;
 }
 /* ========== 間違えた問題リスト ＝ おさらい(review) ==========
@@ -374,7 +399,7 @@ async function makeMistakeSet(){
     return {slotNo:i+1,wordId:w.wordId,questionId:q.questionId,kind:'REVIEW',   // おさらいと同じ扱い：正解すると次の間隔へ進む
       prev:x.last?{day:x.last.day,correct:false,answer:x.last.selected}:null,ans:null};
   });
-  const set={id,kind:'mistake',day,range:null,items,sig:mode+':'+N,created:Date.now()};
+  const set={id,kind:'mistake',day,range:null,items,sig:sigOf(),created:Date.now()};
   await commit([['sets',set]]);return set;
 }
 const isDone=s=>s.items.every(i=>i.ans);
@@ -875,32 +900,41 @@ function portalLinkFromHash(){
 /* ========== 設定（すべて端末に保存。毎回上書き） ========== */
 const HINT_MAX=5;
 const MODES=['mixed','choice','typing'];
+const CDIRS=['random','en2ja','ja2en'];   // 選択問題の向き
 const qOk=v=>Number.isSafeInteger(v)&&v>=1;   // 1回の問題数：1以上ならいくつでもよい（上限なし）
 const THEMES=['auto','light','dark'];   // 押すたびに Auto → Light → Dark
 const NIGHT_FROM=18,NIGHT_TO=6;         // 18:00〜翌6:00 はダーク（端末の時刻）
 const isNight=()=>{const h=new Date().getHours();return h>=NIGHT_FROM||h<NIGHT_TO;};
 const storedTheme=()=>{try{const t=localStorage.getItem('akuma_theme');if(THEMES.includes(t))return t;}catch{}return 'light';};
-let settings={hintLen:2,theme:'light',qMode:'mixed',qCount:5,ttsRate:.86,ttsVoice:''};
+let settings={hintLen:2,theme:'light',qMode:'mixed',cDir:'random',qCount:5,ttsRate:.86,ttsVoice:''};
 async function loadSettings(){
   let st=null;try{st=await dbMeta('settings');}catch{}
   if(st&&typeof st==='object'){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
-    if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(qOk(st.qCount))settings.qCount=st.qCount;
+    if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(CDIRS.includes(st.cDir))settings.cDir=st.cDir;if(qOk(st.qCount))settings.qCount=st.qCount;
     if([.7,.86,1].includes(st.ttsRate))settings.ttsRate=st.ttsRate;if(typeof st.ttsVoice==='string'&&st.ttsVoice.length<=300)settings.ttsVoice=st.ttsVoice;
     if(THEMES.includes(st.theme))settings.theme=st.theme;
     applyTheme(settings.theme);
   }else{settings.theme=storedTheme();applyTheme(settings.theme);}
   try{localStorage.setItem('akuma_theme',settings.theme);}catch{} // 起動直後のちらつき防止用に、テーマだけlocalStorageにも写す
 }
-function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,qCount:settings.qCount,ttsRate:settings.ttsRate,ttsVoice:settings.ttsVoice,savedAt:Date.now()}).catch(()=>{});}
+function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,cDir:settings.cDir,qCount:settings.qCount,ttsRate:settings.ttsRate,ttsVoice:settings.ttsVoice,savedAt:Date.now()}).catch(()=>{});}
 const MODE_LABEL={mixed:'ランダム',choice:'選択のみ',typing:'綴りのみ'};
 function renderModeSeg(){
   const seg=$('modeSeg');if(!seg)return;seg.replaceChildren();
   MODES.forEach(m=>{const b=node('button',MODE_LABEL[m]);b.type='button';b.setAttribute('aria-pressed',String(settings.qMode===m));
-    b.addEventListener('click',()=>{settings.qMode=m;saveSettings();renderModeSeg();renderMistakes();});seg.append(b);});
+    b.addEventListener('click',()=>{settings.qMode=m;saveSettings();renderModeSeg();renderCDirSeg();renderMistakes();});seg.append(b);});
   const nt=words.filter(w=>fits(w,'typing')).length,nc=words.filter(w=>fits(w,'choice')).length;
   $('modeNote').textContent=settings.qMode==='mixed'?'選択問題と綴り問題がまざって出る。':
     (words.length?(settings.qMode==='choice'?nc:nt)===words.length?'全 '+words.length+' 語が'+(settings.qMode==='choice'?'選択':'綴り')+'問題で出る。':(settings.qMode==='choice'?nc:nt)+' 語が'+(settings.qMode==='choice'?'選択':'綴り')+'問題で出る。':'');
+}
+const CDIR_LABEL={random:'ランダム',en2ja:'英語→日本語',ja2en:'日本語→英語'};
+const CDIR_NOTE={random:'英語→日本語と日本語→英語がまざって出る。',en2ja:'英単語を見て、日本語の意味を選ぶ。',ja2en:'日本語の意味を見て、英単語を選ぶ。'};
+function renderCDirSeg(){
+  const seg=$('cDirSeg');if(!seg)return;seg.replaceChildren();
+  CDIRS.forEach(d=>{const b=node('button',CDIR_LABEL[d]);b.type='button';b.setAttribute('aria-pressed',String(settings.cDir===d));
+    b.addEventListener('click',()=>{settings.cDir=d;saveSettings();renderCDirSeg();renderMistakes();});seg.append(b);});
+  $('cDirNote').textContent=CDIR_NOTE[settings.cDir]+(settings.qMode==='typing'?'（いまは「綴りのみ」なので、選択問題は出ない）':'');
 }
 function renderHero(){$('heroTitle').textContent='今日の'+settings.qCount+'問';}
 function syncCountInput(){$('qCountIn').value=settings.qCount;}
@@ -955,10 +989,10 @@ async function importBackup(file){
   const st=j.settings;
   if(st&&typeof st==='object'){
     if(Number.isInteger(st.hintLen)&&st.hintLen>=0&&st.hintLen<=HINT_MAX)settings.hintLen=st.hintLen;
-    if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(qOk(st.qCount))settings.qCount=st.qCount;
+    if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(CDIRS.includes(st.cDir))settings.cDir=st.cDir;if(qOk(st.qCount))settings.qCount=st.qCount;
     if([.7,.86,1].includes(st.ttsRate))settings.ttsRate=st.ttsRate;if(typeof st.ttsVoice==='string'&&st.ttsVoice.length<=300)settings.ttsVoice=st.ttsVoice;
     if(THEMES.includes(st.theme)){settings.theme=st.theme;applyTheme(st.theme);try{localStorage.setItem('akuma_theme',st.theme);}catch{}}
-    await saveSettings();renderHintSeg();renderModeSeg();syncCountInput();renderHero();renderTtsUI();
+    await saveSettings();renderHintSeg();renderModeSeg();renderCDirSeg();syncCountInput();renderHero();renderTtsUI();
   }
   if(window.AKUMA_SYNC)AKUMA_SYNC.syncNow();   // 復元した回答の日別数もサーバーへ反映
   return {na,nr};
@@ -971,7 +1005,7 @@ async function begin(kind,opts){
     if(kind==='daily'){
       const active=await dbMeta('active'),a=active&&await dbGet('sets',active);
       set=a&&!isDone(a)&&a.day===JST(Date.now())?a:(await dbGet('sets','daily:'+JST(Date.now())))||await makeSet('daily');
-      if(set.kind==='daily'&&set.items.every(i=>!i.ans)&&set.sig!==settings.qMode+':'+settings.qCount)set=await makeSet('daily'); // 設定を変えたら、未回答の今日の問題は作り直す
+      if(set.kind==='daily'&&set.items.every(i=>!i.ans)&&set.sig!==sigOf())set=await makeSet('daily'); // 設定を変えたら、未回答の今日の問題は作り直す
     }else if(kind==='mistake')set=await makeMistakeSet();
     else set=await makeSet(kind,opts);
     await dbMeta('active',set.id);
@@ -1149,8 +1183,8 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
     if(!window.indexedDB)throw new Error('このブラウザでは端末内保存（IndexedDB）を使えません。');
     device=await dbMeta('device');if(!device){device=uuid();await dbMeta('device',device);}
     try{const lr=await dbMeta('lastRange');if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){$('rFrom').value=lr.from;$('rTo').value=lr.to;}}catch{} // 前回選んだ範囲を復元
-    await loadSettings();renderHintSeg();renderModeSeg();bindCount();renderHero();bindTts();
-    await loadWords();renderModeSeg();await updateStart();refreshSync();renderMistakes();
+    await loadSettings();renderHintSeg();renderModeSeg();renderCDirSeg();bindCount();renderHero();bindTts();
+    await loadWords();renderModeSeg();renderCDirSeg();await updateStart();refreshSync();renderMistakes();
     if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
   }catch(e){$('start').textContent='開始できません';setError(e.message||'起動に失敗しました。');}
 })();
