@@ -3,7 +3,7 @@
 //       更新は裏で「全ファイルをまとめて」確認する。変わったものを全部取り終えてから、一括でキャッシュに入れ、
 //       ページへ 'akuma-updated' を送る。ページはリロードを待たず、トップに戻ったときに新しい版へ切り替わる。
 //       （一部だけ新しい、という中途半端な状態は作らない）
-const VERSION='akuma-v25';
+const VERSION='akuma-v26';
 const CORE=['config.js','sync.js','manifest.json','data/words.json']; // これが取れないとインストール失敗（古いSWが残る）
 const EXTRA=['news.json','icons/icon.svg','icons/icon-180.png','icons/icon-192.png','icons/icon-512.png']; // 取れなくてもOK
 const RECHECK_MS=20*1000;     // 更新確認は20秒に1回まで。変更なしなら小さな問い合わせ（304）だけなので軽い
