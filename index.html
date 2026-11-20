@@ -93,6 +93,10 @@ form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
 .example{font-size:18px;line-height:1.75}.translation{margin:4px 0 0!important;color:var(--muted);font-size:13px}
 .review-note{margin-top:32px;font-size:12px;color:var(--muted);letter-spacing:.08em}
 .choice-glosses{margin-top:18px;color:var(--muted);font-size:13px}.choice-glosses p{margin:4px 0!important}
+.choice-audio{background:none;border:0;border-bottom:1px solid var(--line);padding:2px 0;margin:0 8px 0 0;font-size:12px;color:var(--text)}
+.manual-search{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:20px}.manual-search label{display:block;font-size:13px}
+.manual-search input{width:100%;background:none;color:var(--text);border:0;border-bottom:1px solid var(--text);border-radius:0;padding:10px 0;font:inherit}
+.manual-result{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:8px 0;font-size:13px}.manual-result span{overflow-wrap:anywhere}.manual-result button{flex:none;width:auto;padding:8px 0;font-size:12px}
 .audio-controls{display:flex;gap:24px;margin:24px 0 0}.audio-controls button{width:auto;flex:none;border:0;padding:4px 0;margin:0;font-size:12px;letter-spacing:.14em;border-bottom:1px solid var(--line)}
 .audio-controls button:hover{border-bottom-color:var(--text)}
 .rate-row{display:flex;align-items:center;gap:14px;margin:12px 0 0;font-size:11px;color:var(--muted);letter-spacing:.08em}
@@ -158,7 +162,12 @@ body{transition:opacity .2s ease}body.fade-out{opacity:0}
       <p class="sync" id="sync"></p>
       <div class="menu">
         <details id="mistakeBox"><summary>間違えた問題・おさらい<span id="mistakeSum" class="muted"></span></summary>
-          <div class="pane"><div id="mistakeList"></div></div></details>
+          <div class="pane"><div class="manual-search">
+            <label for="reviewSearch">おさらいしたい単語を追加</label>
+            <input id="reviewSearch" type="search" placeholder="英単語・意味・LEAP番号で検索" autocomplete="off">
+            <p class="mini">収録されている単語を検索して追加できます。</p>
+            <div id="reviewSearchResults"></div><p id="reviewSearchStatus" class="mini" role="status"></p>
+          </div><div id="mistakeList"></div></div></details>
         <details id="studyBox" open><summary>学習設定</summary>
           <div class="pane">
             <div class="set-group">
@@ -378,6 +387,23 @@ async function getMistakes(){
   }
   return rvs.filter(r=>r.status==='ACTIVE'&&byId[r.wordId]).map(r=>{const x=wrong.get(r.wordId);return {wordId:r.wordId,rv:r,count:x?x.count:0,last:x?x.last:null};})
     .sort((a,b)=>a.rv.nextDate<b.rv.nextDate?-1:a.rv.nextDate>b.rv.nextDate?1:a.wordId<b.wordId?-1:1); // 次のおさらいが近い順
+}
+// 読み取りと書き込みを同じトランザクションに入れ、他タブの追加を上書きしない。
+async function addManualReview(wordId){
+  if(!byId[wordId])throw new Error('単語が見つかりません。');
+  const d=await idb;
+  return new Promise((resolve,reject)=>{
+    const t=d.transaction('review','readwrite'),store=t.objectStore('review'),r=store.get(wordId);
+    let added=false;
+    r.onsuccess=()=>{
+      const prev=r.result;
+      if(prev&&prev.status==='ACTIVE')return; // 既存の予定や進捗を変更しない
+      const rv={...prev,wordId,stage:0,status:'ACTIVE',nextDate:JST(Date.now()),streak:0,updatedAt:Date.now(),dirty:1};
+      store.put(rv);added=true;
+    };
+    t.oncomplete=()=>resolve(added);
+    t.onerror=t.onabort=()=>reject(t.error||new Error('保存に失敗しました'));
+  });
 }
 async function removeReview(wordId){
   const prev=await dbGet('review',wordId);
@@ -697,11 +723,18 @@ function learningBlock(w,expanded,skipSub){
 function glossBlock(w,q,ans){
   if(q.type==='typing')return null;
   const wrong=q.options.map((t,i)=>({t,i})).filter(o=>o.i!==q.correctIndex);
-  const b=node('div',undefined,'mini choice-glosses');b.append(node('p','ほかの選択肢も確認'));
+  const b=node('div',undefined,'mini choice-glosses'),msg=node('p','','mini');msg.setAttribute('role','status');
+  b.append(node('p','ほかの選択肢も確認'));
   wrong.forEach(o=>{
-    const v=q.type==='word_mcq'?(byWord[norm(o.t)]||{}).meaning:(meaningToWords[norm(o.t)]||[]).join(' / ');
-    b.append(node('p',String.fromCharCode(65+o.i)+'. '+o.t+(o.t===ans.selected?'（あなたの答え）':'')+'　'+(v||'―')));
-  });return b;
+    const english=q.type==='word_mcq'?[o.t]:(meaningToWords[norm(o.t)]||[]);
+    const v=q.type==='word_mcq'?(byWord[norm(o.t)]||{}).meaning:english.join(' / ');
+    const row=node('div');row.append(node('p',String.fromCharCode(65+o.i)+'. '+o.t+(o.t===ans.selected?'（あなたの答え）':'')+'　'+(v||'―')));
+    [...new Set(english)].forEach(word=>{
+      const button=node('button',word+' を聞く','choice-audio');button.type='button';
+      button.setAttribute('aria-label',word+' の発音を聞く');button.addEventListener('click',()=>speak(word,msg));row.append(button);
+    });
+    b.append(row);
+  });b.append(msg);return b;
 }
 
 /* ========== 出題・解答・結果 ========== */
@@ -721,7 +754,7 @@ function renderQuestion(set,it){
     node('span',(it.kind==='REVIEW'?(set.kind==='mistake'?'復習　':'おさらい　'):'')+({meaning_mcq:'日本語を選択',word_mcq:'英語を選択',typing:'英語を入力'}[q.type]||'選択問題'),'chip'));
   area.append(head);
   if(it.kind==='REVIEW'){
-    const rv=node('div',undefined,'card revenge');rv.append(node('h2',set.kind==='mistake'?'間違えた問題の復習':'おさらい'),node('p','LEAP '+w.leapNo+' をもう一度。'));
+    const rv=node('div',undefined,'card revenge');rv.append(node('h2',set.kind==='mistake'?'おさらいリストの復習':'おさらい'),node('p','LEAP '+w.leapNo+' をもう一度。'));
     if(it.prev&&it.prev.correct===false)rv.append(node('p','前回の答え（'+it.prev.day+'）：'+it.prev.answer+'（不正解）','mini'));
     else if(it.prev)rv.append(node('p','前回は正解','mini'));
     area.append(rv);
@@ -785,7 +818,7 @@ function renderResult(set){
   show('result');const area=$('result');area.replaceChildren();
   const fb=set.items.map(it=>({it,w:byId[it.wordId],a:it.ans})),ok=fb.filter(x=>x.a.correct).length;
   const head=node('div',undefined,'result-head');
-  head.append(node('h1',set.day+'　'+(set.range?'範囲練習':set.kind==='mistake'?'間違えた問題の復習':set.kind==='daily'?'今日の'+set.items.length+'問':'追加の'+set.items.length+'問')));
+  head.append(node('h1',set.day+'　'+(set.range?'範囲練習':set.kind==='mistake'?'おさらいリストの復習':set.kind==='daily'?'今日の'+set.items.length+'問':'追加の'+set.items.length+'問')));
   const sc=node('div',undefined,'score');sc.append(document.createTextNode(ok+' '),node('small','/ '+set.items.length+' 正解'));
   head.append(sc,node('p',''+Math.round(ok/set.items.length*100)+'%','muted'));area.append(head);
   if(window.AKUMA_SYNC&&AKUMA_SYNC.state.enabled){ // 同期が有効なら、5問終わった結果画面に順位と1つ上との差を出す（オフライン時は復帰後に自動表示）
@@ -803,7 +836,8 @@ function renderResult(set){
   else{const ul=node('ul',undefined,'review-list');rl.forEach(x=>{const li=node('li');li.append(node('span',x.w.word),node('time',x.a.review.status==='MASTERED'?'習得済み':x.a.review.status==='REMOVED'?'リストから外した':x.a.review.nextDate));ul.append(li);});rv.append(ul);}
   area.append(rv);
   const rc=node('div',undefined,'card result-card');rc.append(node('h2',set.kind==='mistake'?'この復習の解説を見返す':'この'+set.items.length+'問の解説を見返す'));
-  fb.forEach(x=>{const d=node('details');d.append(node('summary',(x.a.correct?'正解　':'不正解　')+x.w.word+'　'+x.w.meaning),learningBlock(x.w));rc.append(d);});area.append(rc);
+  fb.forEach(x=>{const d=node('details'),q=qOf(x.it);d.append(node('summary',(x.a.correct?'正解　':'不正解　')+x.w.word+'　'+x.w.meaning));
+    if(q){const g=glossBlock(x.w,q,x.a);if(g)d.append(g);}d.append(learningBlock(x.w));rc.append(d);});area.append(rc);
   if(set.kind==='mistake'){
     const more=node('button','続けて復習する','primary'),left=node('p','','mini');more.type='button';more.hidden=true;
     more.addEventListener('click',()=>begin('mistake'));area.append(left,more);
@@ -959,7 +993,7 @@ function typingPrompt(q,w){
   return m[1].replace(/\n+$/,'')+'\n'+(n>0?'語頭「'+base.slice(0,n)+'」・':'')+'英字'+letterCount(w)+'文字';
 }
 const reviewBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','おさらい'),node('span','LEAP '+w.leapNo));return b;};
-const mistakeBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','間違えた問題の復習'),node('span','LEAP '+w.leapNo));return b;};
+const mistakeBanner=w=>{const b=node('div',undefined,'review-banner');b.setAttribute('role','note');b.append(node('span','おさらいリストの復習'),node('span','LEAP '+w.leapNo));return b;};
 const banners=(set,it,w)=>it.kind!=='REVIEW'?[]:set.kind==='mistake'?[mistakeBanner(w)]:[reviewBanner(w)];
 
 /* ========== バックアップの書き出し・復元 ========== */
@@ -1027,15 +1061,40 @@ async function updateStart(){
   b.disabled=false;b.textContent=open?'続きから':(daily&&isDone(daily)?'今日の結果':'始める');
   b.onclick=()=>open?begin('daily'):(daily&&isDone(daily)?renderResult(daily):begin('daily'));
 }
+function bindReviewSearch(){
+  const input=$('reviewSearch'),results=$('reviewSearchResults'),status=$('reviewSearchStatus');
+  const render=()=>{
+    const query=norm(input.value);results.replaceChildren();status.textContent='';
+    if(!query)return;
+    const matches=words.filter(w=>norm(w.word).includes(query)||norm(w.meaning).includes(query)||String(w.leapNo)===query);
+    if(!matches.length){status.textContent='該当する単語がありません。';return;}
+    matches.slice(0,30).forEach(w=>{
+      const row=node('div',undefined,'manual-result'),label=node('span',w.word+'　'+w.meaning+'（LEAP '+w.leapNo+'）');
+      const add=node('button','追加','secondary');add.type='button';add.setAttribute('aria-label',w.word+'（LEAP '+w.leapNo+'）をおさらいに追加');
+      add.addEventListener('click',async()=>{
+        add.disabled=true;
+        try{
+          const added=await addManualReview(w.wordId);
+          status.textContent=added?w.word+' をおさらいに追加しました。':w.word+' はすでにおさらいに入っています。';
+          await renderMistakes();
+        }catch{status.textContent='保存できませんでした。もう一度お試しください。';}
+        finally{add.disabled=false;}
+      });
+      row.append(label,add);results.append(row);
+    });
+    if(matches.length>30)status.textContent='先頭の30語を表示しています。検索語を絞ってください。';
+  };
+  input.addEventListener('input',render);
+}
 let mistakeShown=30;
 async function renderMistakes(){
   let list;try{list=await getMistakes();}catch{return;}
   const box=$('mistakeList');
   $('mistakeSum').textContent=list.length?'　'+list.length+'語':'';
   box.replaceChildren();
-  if(!list.length){box.append(node('p','間違えた問題はありません。間違えると、ここに溜まり、おさらいとして戻ってくる。','mini'));return;}
+  if(!list.length){box.append(node('p','おさらいする単語はありません。間違えた単語や、手動で追加した単語がここに表示されます。','mini'));return;}
   const can=list.filter(x=>fits(byId[x.wordId])).length;
-  if(can){const go=node('button','間違えた問題を復習する（'+Math.min(settings.qCount,can)+'問）','primary');go.type='button';go.addEventListener('click',()=>begin('mistake'));box.append(go);}
+  if(can){const go=node('button','おさらいリストを復習する（'+Math.min(settings.qCount,can)+'問）','primary');go.type='button';go.addEventListener('click',()=>begin('mistake'));box.append(go);}
   else box.append(node('p','いまの出題形式では復習できる語がありません。','mini'));
   const rows=node('div');box.append(rows);
   const drop=wordId=>async()=>{
@@ -1049,7 +1108,7 @@ async function renderMistakes(){
       const info=node('div');
       info.append(statRow('LEAP',String(w.leapNo)),statRow('連続正解',Math.min(streakOf(x.rv),AUTO_REMOVE_STREAK)+' / '+AUTO_REMOVE_STREAK+'回'),statRow('次のおさらい',x.rv.nextDate),statRow('問題の形式',(w.questions.find(q=>!q.gen)||{}).type==='typing'?'綴り':'選択'));
       if(x.last)info.append(statRow('間違えた回数',x.count+'回'),statRow('最後に間違えた日',x.last.day),statRow('そのときの答え',x.last.selected||'—'));
-      else info.append(statRow('きっかけ','偶然の正解からおさらいに追加'));
+      else info.append(statRow('きっかけ','おさらいに追加'));
       const rm=node('button','復習リストから削除','secondary');rm.type='button';rm.addEventListener('click',drop(x.wordId));
       row.append(learningBlock(w,true),info,rm);   // 開いたら、意味・例文・解説をまとめて表示
     });
@@ -1184,7 +1243,7 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
     device=await dbMeta('device');if(!device){device=uuid();await dbMeta('device',device);}
     try{const lr=await dbMeta('lastRange');if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){$('rFrom').value=lr.from;$('rTo').value=lr.to;}}catch{} // 前回選んだ範囲を復元
     await loadSettings();renderHintSeg();renderModeSeg();renderCDirSeg();bindCount();renderHero();bindTts();
-    await loadWords();renderModeSeg();renderCDirSeg();await updateStart();refreshSync();renderMistakes();
+    await loadWords();bindReviewSearch();renderModeSeg();renderCDirSeg();await updateStart();refreshSync();renderMistakes();
     if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
   }catch(e){$('start').textContent='開始できません';setError(e.message||'起動に失敗しました。');}
 })();
