@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="テンシ英単語">
 <script>try{var t=localStorage.getItem('akuma_theme'),d=t==='dark';if(t==='auto'){var h=new Date().getHours();d=h>=18||h<6;}if(d)document.documentElement.dataset.theme='dark';}catch(e){}
 try{if(sessionStorage.getItem('akuma_fade')){sessionStorage.removeItem('akuma_fade');document.documentElement.classList.add('fade-in');}}catch(e){}</script>
+<script src="christmas.js"></script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
@@ -93,6 +94,9 @@ form label{font-size:11px;color:var(--muted);letter-spacing:.14em}
 .example{font-size:18px;line-height:1.75}.translation{margin:4px 0 0!important;color:var(--muted);font-size:13px}
 .review-note{margin-top:32px;font-size:12px;color:var(--muted);letter-spacing:.08em}
 .choice-glosses{margin-top:18px;color:var(--muted);font-size:13px}.choice-glosses p{margin:4px 0!important}
+.choice-glosses .gloss-play{display:inline;width:auto;flex:none;background:none;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:4px 0;margin:0 0 0 12px;min-height:0;font-size:12px;letter-spacing:.1em;color:var(--muted)}.choice-glosses .gloss-play:hover{border-bottom-color:var(--text);color:var(--text)}
+.add-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}.add-row>span{flex:1;min-width:0;font-size:14px}.add-row small{display:block;color:var(--muted);font-size:12px;margin-top:2px}.add-row button{width:auto;flex:none;margin:0;min-height:0;padding:8px 14px;font-size:12px}
+#reviewAdd{margin-bottom:22px;padding-bottom:6px;border-bottom:1px solid var(--line)}#reviewAdd input{width:100%}
 .audio-controls{display:flex;gap:24px;margin:24px 0 0}.audio-controls button{width:auto;flex:none;border:0;padding:4px 0;margin:0;font-size:12px;letter-spacing:.14em;border-bottom:1px solid var(--line)}
 .audio-controls button:hover{border-bottom-color:var(--text)}
 .rate-row{display:flex;align-items:center;gap:14px;margin:12px 0 0;font-size:11px;color:var(--muted);letter-spacing:.08em}
@@ -158,7 +162,7 @@ body{transition:opacity .2s ease}body.fade-out{opacity:0}
       <p class="sync" id="sync"></p>
       <div class="menu">
         <details id="mistakeBox"><summary>間違えた問題・おさらい<span id="mistakeSum" class="muted"></span></summary>
-          <div class="pane"><div id="mistakeList"></div></div></details>
+          <div class="pane"><div id="reviewAdd"></div><div id="mistakeList"></div></div></details>
         <details id="studyBox" open><summary>学習設定</summary>
           <div class="pane">
             <div class="set-group">
@@ -270,7 +274,21 @@ async function loadWords(){
   const res=await fetch('data/words.json');if(!res.ok)throw new Error('単語データを読み込めません');
   words=await res.json();
   words.forEach(w=>{byId[w.wordId]=w;byWord[w.word.toLowerCase()]=w;const k=norm(w.meaning);(meaningToWords[k]=meaningToWords[k]||[]).push(w.word);});
-  genQuestions();
+  genQuestions();maskPrompts();
+}
+/* 意味欄の（bump into）のように、答えの単語そのものが英語で入っているものを（〜 into）に伏せる。
+   出題時の問題文だけを変える。答え合わせ・解説では元の意味をそのまま出す。 */
+function maskMeaning(w){
+  const base=cleanWord(w).toLowerCase();
+  const mask=tok=>{const t=tok.toLowerCase();let n=0;while(n<t.length&&n<base.length&&t[n]===base[n])n++;return n>=3||(n===base.length&&n>=2)?'〜'+tok.slice(n):tok;};
+  return String(w.meaning).replace(/([（(])([^）)]*)([）)])/g,(m,a,body,c)=>a+body.replace(/[A-Za-z]+/g,mask)+c);
+}
+function maskPrompts(){
+  for(const w of words){
+    const m=maskMeaning(w);if(m===w.meaning)continue;
+    w.maskedMeaning=m;
+    for(const q of w.questions)if(q.type!=='meaning_mcq')q.prompt=q.prompt.split(w.meaning).join(m);
+  }
 }
 /* 足りない形式の問題を作る。単語ごとに同じ乱数(wordId固定)で作るので、いつ開いても同じ問題・同じ選択肢になる。 */
 /* 綴り問題の正解の形。見出し語の表記ゆれを正規化して、受け付ける答えの一覧にする。
@@ -448,7 +466,7 @@ async function selfReview(set,slotNo){
 function setStatus(t){$('status').textContent=t||'';}
 function setError(m){$('error').replaceChildren(node('p',m));$('error').hidden=false;}
 function clearError(){$('error').hidden=true;$('error').replaceChildren();}
-function show(name){stopSpeech();['home','play','result'].forEach(id=>{$(id).hidden=id!==name;});clearError();setStatus('');}
+function show(name){stopSpeech();['home','play','result'].forEach(id=>{$(id).hidden=id!==name;});clearError();setStatus('');if(window.XMAS)XMAS.sync(name==='home');}   // クリスマス仕様はトップ画面だけ
 function focusHeading(c){const h=c.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true});}window.scrollTo(0,0);}
 function progress(set){
   const n=set.items.filter(i=>i.ans).length,c=node('div'),line=node('div',undefined,'topline');
@@ -697,11 +715,17 @@ function learningBlock(w,expanded,skipSub){
 function glossBlock(w,q,ans){
   if(q.type==='typing')return null;
   const wrong=q.options.map((t,i)=>({t,i})).filter(o=>o.i!==q.correctIndex);
-  const b=node('div',undefined,'mini choice-glosses');b.append(node('p','ほかの選択肢も確認'));
+  const b=node('div',undefined,'mini choice-glosses'),msg=node('p','','mini');msg.setAttribute('role','status');
+  b.append(node('p','ほかの選択肢も確認'));
+  const play=(text,label)=>{const x=node('button',label,'gloss-play');x.type='button';x.setAttribute('aria-label','「'+text+'」を聞く');x.addEventListener('click',()=>speak(text,msg));return x;};
   wrong.forEach(o=>{
-    const v=q.type==='word_mcq'?(byWord[norm(o.t)]||{}).meaning:(meaningToWords[norm(o.t)]||[]).join(' / ');
-    b.append(node('p',String.fromCharCode(65+o.i)+'. '+o.t+(o.t===ans.selected?'（あなたの答え）':'')+'　'+(v||'―')));
-  });return b;
+    const isW=q.type==='word_mcq',ws=isW?[o.t]:(meaningToWords[norm(o.t)]||[]).slice(0,4);   // 聞くのは英単語。日本語の選択肢は、その意味を持つ英単語を聞く
+    const v=isW?(byWord[norm(o.t)]||{}).meaning:null;
+    const p=node('p',String.fromCharCode(65+o.i)+'. '+o.t+(o.t===ans.selected?'（あなたの答え）':'')+(isW?'　'+(v||'―'):(ws.length?'　':'　―')));
+    ws.forEach(x=>p.append(play(x,isW?'聞く':'▶ '+x)));
+    b.append(p);
+  });
+  b.append(msg);return b;
 }
 
 /* ========== 出題・解答・結果 ========== */
@@ -1027,13 +1051,53 @@ async function updateStart(){
   b.disabled=false;b.textContent=open?'続きから':(daily&&isDone(daily)?'今日の結果':'始める');
   b.onclick=()=>open?begin('daily'):(daily&&isDone(daily)?renderResult(daily):begin('daily'));
 }
+/* ========== おさらいしたい単語の手動追加 ==========
+   英単語・日本語の意味・LEAP番号で探して、間違えた問題・おさらいのリストに入れる。今日から出題される。 */
+async function addManualReview(wordId){
+  const rv={wordId,stage:0,status:'ACTIVE',nextDate:JST(Date.now()),streak:0,updatedAt:Date.now(),dirty:1};
+  await commit([['review',rv]]);if(window.AKUMA_SYNC)AKUMA_SYNC.kick();return rv;
+}
+function searchWords(raw){
+  const q=norm(raw);if(!q)return [];
+  if(/^\d+$/.test(q))return words.filter(w=>String(w.leapNo)===q);
+  const sc=w=>{const x=norm(w.word);return x===q?0:x.startsWith(q)?1:x.includes(q)?2:norm(w.meaning).includes(q)?3:-1;};
+  return words.map(w=>({w,s:sc(w)})).filter(x=>x.s>=0).sort((a,b)=>a.s-b.s||a.w.leapNo-b.w.leapNo).map(x=>x.w);
+}
+function setupReviewAdd(){
+  const box=$('reviewAdd');if(!box||box.dataset.built)return;box.dataset.built='1';
+  const label=node('label','おさらいしたい単語を追加','label');label.htmlFor='addQ';
+  const input=node('input',undefined,'typing');
+  Object.entries({id:'addQ',type:'search',autocomplete:'off',autocapitalize:'none',spellcheck:'false',enterkeyhint:'search',maxLength:'60',placeholder:'英単語・日本語の意味・LEAP番号',name:'q'+Math.random().toString(36).slice(2),'data-lpignore':'true','data-1p-ignore':'true'}).forEach(([k,v])=>input.setAttribute(k,v));
+  const out=node('div'),msg=node('p','','mini');msg.setAttribute('role','status');
+  box.append(label,input,out,msg);
+  let seq=0;
+  const run=async()=>{
+    const my=++seq,hits=searchWords(input.value);
+    let have;try{have=new Map((await dbAll('review')).map(r=>[r.wordId,r]));}catch{have=new Map();}
+    if(my!==seq)return;
+    out.replaceChildren();msg.textContent='';
+    if(!input.value.trim())return;
+    if(!hits.length){msg.textContent='見つかりませんでした。';return;}
+    hits.slice(0,8).forEach(w=>{
+      const row=node('div',undefined,'add-row'),t=node('span',w.word),sm=node('small','LEAP '+w.leapNo+'　'+w.meaning);t.append(sm);
+      const on=have.get(w.wordId)&&have.get(w.wordId).status==='ACTIVE';
+      const b=node('button',on?'追加済み':'おさらいに追加','secondary');b.type='button';b.disabled=!!on;
+      b.addEventListener('click',async()=>{b.disabled=true;
+        try{await addManualReview(w.wordId);b.textContent='追加済み';msg.textContent='「'+w.word+'」をおさらいに追加しました。';renderMistakes();}
+        catch{msg.textContent='保存できませんでした。';b.disabled=false;}});
+      row.append(t,b);out.append(row);
+    });
+    if(hits.length>8)msg.textContent='ほかに '+(hits.length-8)+' 件。もう少し絞ってください。';
+  };
+  input.addEventListener('input',run);
+}
 let mistakeShown=30;
 async function renderMistakes(){
   let list;try{list=await getMistakes();}catch{return;}
   const box=$('mistakeList');
   $('mistakeSum').textContent=list.length?'　'+list.length+'語':'';
   box.replaceChildren();
-  if(!list.length){box.append(node('p','間違えた問題はありません。間違えると、ここに溜まり、おさらいとして戻ってくる。','mini'));return;}
+  if(!list.length){box.append(node('p','間違えた問題はありません。間違えると、ここに溜まり、おさらいとして戻ってくる。上の欄から、おさらいしたい単語を自分で追加もできる。','mini'));return;}
   const can=list.filter(x=>fits(byId[x.wordId])).length;
   if(can){const go=node('button','間違えた問題を復習する（'+Math.min(settings.qCount,can)+'問）','primary');go.type='button';go.addEventListener('click',()=>begin('mistake'));box.append(go);}
   else box.append(node('p','いまの出題形式では復習できる語がありません。','mini'));
@@ -1049,7 +1113,7 @@ async function renderMistakes(){
       const info=node('div');
       info.append(statRow('LEAP',String(w.leapNo)),statRow('連続正解',Math.min(streakOf(x.rv),AUTO_REMOVE_STREAK)+' / '+AUTO_REMOVE_STREAK+'回'),statRow('次のおさらい',x.rv.nextDate),statRow('問題の形式',(w.questions.find(q=>!q.gen)||{}).type==='typing'?'綴り':'選択'));
       if(x.last)info.append(statRow('間違えた回数',x.count+'回'),statRow('最後に間違えた日',x.last.day),statRow('そのときの答え',x.last.selected||'—'));
-      else info.append(statRow('きっかけ','偶然の正解からおさらいに追加'));
+      else info.append(statRow('きっかけ','手動追加、または偶然の正解からおさらいに追加'));
       const rm=node('button','復習リストから削除','secondary');rm.type='button';rm.addEventListener('click',drop(x.wordId));
       row.append(learningBlock(w,true),info,rm);   // 開いたら、意味・例文・解説をまとめて表示
     });
@@ -1184,7 +1248,7 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
     device=await dbMeta('device');if(!device){device=uuid();await dbMeta('device',device);}
     try{const lr=await dbMeta('lastRange');if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){$('rFrom').value=lr.from;$('rTo').value=lr.to;}}catch{} // 前回選んだ範囲を復元
     await loadSettings();renderHintSeg();renderModeSeg();renderCDirSeg();bindCount();renderHero();bindTts();
-    await loadWords();renderModeSeg();renderCDirSeg();await updateStart();refreshSync();renderMistakes();
+    await loadWords();setupReviewAdd();renderModeSeg();renderCDirSeg();await updateStart();refreshSync();renderMistakes();
     if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
   }catch(e){$('start').textContent='開始できません';setError(e.message||'起動に失敗しました。');}
 })();
