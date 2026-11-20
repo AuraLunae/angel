@@ -1,0 +1,9 @@
+{
+  "name": "angel",
+  "private": true,
+  "scripts": {"test": "node --test tests/*.test.cjs"},
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.8",
+    "jsdom": "^26.1.0"
+  }
+}
