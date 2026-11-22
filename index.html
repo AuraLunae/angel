@@ -146,6 +146,22 @@ input.typing.keyin{font-size:15px;letter-spacing:.1em;text-transform:uppercase;f
 .info-title{margin:10px 0 0;font-size:14px;font-weight:600;line-height:1.7;overflow-wrap:anywhere}
 .info-body{margin:6px 0 0;font-size:12px;line-height:1.9;color:var(--muted);white-space:pre-line;overflow-wrap:anywhere}
 .infobox a,.relbox a{color:var(--text);text-decoration:underline;text-underline-offset:3px}
+.flip{border:1px solid var(--text);padding:36px 26px;min-height:180px;display:flex;flex-direction:column;justify-content:center;margin:0 0 20px}
+.flip.answer{border-color:var(--line);background:var(--tint);min-height:0;margin:20px 0}
+.face-label{margin:0 0 10px;font-size:11px;color:var(--muted);letter-spacing:.24em}
+.face-main{margin:0;font-size:36px;font-weight:400;line-height:1.3;overflow-wrap:anywhere}.face-main.ja{font-size:24px;line-height:1.7;white-space:pre-line}
+.face-sub{margin:8px 0 0;font-size:12px;color:var(--muted);letter-spacing:.08em}
+.reveal-btn{display:block;width:100%;min-height:132px;margin:20px 0;background:var(--tint);border:1px dashed var(--muted);border-radius:0;font-size:14px;letter-spacing:.2em;color:var(--muted);transition:border-color .25s,color .25s}
+.reveal-btn:hover{border-color:var(--text);color:var(--text)}
+.cardrow{display:grid;grid-template-columns:46px minmax(0,1fr) 46px;gap:8px;align-items:stretch;margin:16px 0 0}
+.cardmain{min-width:0}
+.cardrow .flip{padding:28px 16px;min-height:150px}
+.sidebtn{position:sticky;top:28vh;align-self:start;width:46px;height:min(44vh,280px);min-height:150px;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:0;background:var(--tint);color:var(--muted);font-size:30px;line-height:1;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:background .2s,color .2s,border-color .2s}
+.sidebtn.next{border-color:var(--text);color:var(--text)}
+.sidebtn:hover:not(:disabled),.sidebtn:active:not(:disabled){background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+.sidebtn:disabled{opacity:.22}
+.flip.tappable{cursor:pointer}
+#bookList .mrow>.secondary{margin-top:14px}#bookForm .secondary{margin-top:8px}
 body{transition:opacity .2s ease}body.fade-out{opacity:0}
 .fade-in body{animation:akumaIn .28s ease both}@keyframes akumaIn{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -159,10 +175,20 @@ body{transition:opacity .2s ease}body.fade-out{opacity:0}
       <div class="infobox" id="infoBox" hidden></div>
       <div class="hero"><p class="label">TODAY</p><p class="bigdate" id="today"></p><h1 id="heroTitle">今日の5問</h1></div>
       <button class="primary" id="start" disabled>読み込み中</button>
+      <p class="sync" id="startNote" hidden></p>
       <p class="sync" id="sync"></p>
       <div class="menu">
         <details id="mistakeBox"><summary>間違えた問題・おさらい<span id="mistakeSum" class="muted"></span></summary>
           <div class="pane"><div id="reviewAdd"></div><div id="mistakeList"></div></div></details>
+        <details id="bookBox"><summary>自分の単語帳<span id="bookSum" class="muted"></span></summary>
+          <div class="pane">
+            <form id="bookForm"><label class="label" for="bookName">新しい単語帳を作る</label>
+              <input class="typing" id="bookName" type="text" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="名前（例：苦手な動詞）" name="bk-name" data-lpignore="true" data-1p-ignore="true">
+              <button class="secondary" type="submit">作成</button></form>
+            <p class="mini" id="bookMsg" role="status"></p>
+            <div id="bookList"></div>
+            <p class="mini">LEAPの語を好きなだけ入れられる。「学習設定」の「出題の対象」で選ぶと、クイズとカードがその単語帳の語から出る。単語帳はこの端末に保存される（バックアップにも入る）。</p>
+          </div></details>
         <details id="studyBox" open><summary>学習設定</summary>
           <div class="pane">
             <div class="set-group">
@@ -170,8 +196,13 @@ body{transition:opacity .2s ease}body.fade-out{opacity:0}
               <form id="rangeForm"><div class="range-fields">
                 <label>開始<input class="typing" id="rFrom" type="number" min="1" max="2300" value="1" inputmode="numeric" required></label>
                 <label>終了<input class="typing" id="rTo" type="number" min="1" max="2300" value="2300" inputmode="numeric" required></label></div>
-                <p class="mini">LEAP番号。5語以上。</p>
-                <button class="primary" type="submit">この範囲で練習を始める</button></form>
+                <p class="mini" id="rangeNote">LEAP番号。5語以上。</p>
+                <button class="primary" type="submit" id="rangeGo">この範囲で練習を始める</button></form>
+            </div>
+            <div class="set-group">
+              <p class="label">出題の対象</p>
+              <select class="sel" id="srcSel" aria-label="出題の対象"></select>
+              <p class="mini" id="srcNote"></p>
             </div>
             <div class="set-group">
               <p class="label">出題形式</p>
@@ -179,13 +210,13 @@ body{transition:opacity .2s ease}body.fade-out{opacity:0}
               <p class="mini" id="modeNote"></p>
             </div>
             <div class="set-group">
-              <p class="label">選択問題の向き</p>
-              <div class="seg" id="cDirSeg" role="group" aria-label="選択問題の向き"></div>
+              <p class="label">選択問題・カードの向き</p>
+              <div class="seg" id="cDirSeg" role="group" aria-label="選択問題・カードの向き"></div>
               <p class="mini" id="cDirNote"></p>
             </div>
             <div class="set-group">
               <label>1回の問題数<input class="typing" id="qCountIn" type="number" min="1" value="5" inputmode="numeric"></label>
-              <p class="mini">初期値は5問。1問以上、好きな数に変えられる（上限なし）。単語が足りないときは、出せる分だけ出る。</p>
+              <p class="mini">初期値は5問。1問以上、好きな数に変えられる（上限なし）。単語が足りないときは、出せる分だけ出る。カード形式では、この数に関係なく全部めくる。</p>
             </div>
             <div class="set-group">
               <p class="label">語頭を見せる文字数（入力問題）</p>
@@ -343,7 +374,9 @@ const choiceQs=w=>{
   if(!t)return cs;
   const m=cs.filter(q=>q.type===t),o=m.filter(q=>!q.gen);return o.length?o:m;
 };
+const quizMode=()=>settings.qMode==='card'?'mixed':settings.qMode;   // カードは回答を記録しない別の形式。クイズを作るときは「ランダム」として扱う
 const qsFor=(w,mode)=>{
+  if(mode==='card')return w.questions;
   if(mode==='choice')return choiceQs(w);
   if(mode!=='typing'){   // ランダム(綴り＋選択)：元の問題だけ。向きを指定しているときは、向きの違う選択問題を入れ替える
     const o=w.questions.filter(q=>!q.gen);
@@ -358,7 +391,7 @@ const fits=(w,mode)=>qsFor(w,mode||settings.qMode).length>0;
 async function makeSet(kind,opts={}){
   const day=JST(Date.now()),sets=await dbAll('sets'),dayAll=sets.filter(s=>s.day===day);
   const id=kind==='daily'?'daily:'+day:kind+':'+day+':'+dayAll.length,today=dayAll.filter(s=>s.id!==id); // 作り直す今日のセット自身は除く
-  const mode=settings.qMode,N=settings.qCount,revMax=Math.min(N,Math.max(2,Math.round(N*.4)));
+  const mode=quizMode(),N=settings.qCount,revMax=Math.min(N,Math.max(2,Math.round(N*.4)));
   const r=rng(id+':'+device);
   const answers=await dbAll('answers'),last=new Map();
   answers.forEach(a=>{const p=last.get(a.wordId);if(!p||a.at>p.at)last.set(a.wordId,a);});
@@ -368,7 +401,10 @@ async function makeSet(kind,opts={}){
   if(kind==='early')rev=reviews.filter(x=>x.nextDate>day).sort((a,b)=>a.nextDate<b.nextDate?-1:1).slice(0,revMax);
   const revIds=new Set(rev.map(x=>x.wordId)),used=new Set(today.flatMap(s=>s.items.map(i=>i.wordId)));
   const lo=opts.from||1,hi=opts.to||2300;
-  const pool=words.filter(w=>w.leapNo>=lo&&w.leapNo<=hi&&!revIds.has(w.wordId)&&fits(w));
+  const wantBook=kind==='book'||(kind==='range'&&!!opts.book);   // 範囲練習も、単語帳を選んでいればその中だけ
+  const bk=wantBook?books.find(b=>b.id===opts.book):null;if(wantBook&&!bk)throw new Error('単語帳が見つかりません。');
+  const bookIds=bk?new Set(bk.wordIds):null;   // 単語帳の出題は、その語だけから（おさらいは混ぜない。範囲練習と同じ）
+  const pool=words.filter(w=>w.leapNo>=lo&&w.leapNo<=hi&&!revIds.has(w.wordId)&&(!bookIds||bookIds.has(w.wordId))&&fits(w));
   const fresh=shuffle(pool.filter(w=>!last.has(w.wordId)&&!used.has(w.wordId)),r);
   const stale=pool.filter(w=>last.has(w.wordId)&&!used.has(w.wordId)).sort((a,b)=>last.get(a.wordId).at-last.get(b.wordId).at);
   const again=shuffle(pool.filter(w=>used.has(w.wordId)),r);
@@ -380,8 +416,8 @@ async function makeSet(kind,opts={}){
     return {wordId:w.wordId,questionId:q.questionId,kind,prev:kind==='REVIEW'&&p?{day:p.day,correct:p.correct,answer:p.selected}:null,ans:null};
   };
   const items=shuffle([...rev.map(x=>mk(byId[x.wordId],'REVIEW')),...picks.map(w=>mk(w,'NEW'))],r).map((it,i)=>({slotNo:i+1,...it}));
-  if(!items.length)throw new Error('この条件で出せる問題がありません。範囲か出題形式を変えてください。');
-  const set={id,kind,day,range:kind==='range'?{from:lo,to:hi}:null,items,sig:sigOf(),created:Date.now()};
+  if(!items.length)throw new Error(bk&&!bk.wordIds.length?'この単語帳にはまだ語がありません。「自分の単語帳」から追加してください。':'この条件で出せる問題がありません。範囲か出題形式を変えてください。');
+  const set={id,kind,day,range:kind==='range'?{from:lo,to:hi}:null,book:bk?{id:bk.id,name:bk.name}:null,items,sig:sigOf(),created:Date.now()};
   await commit([['sets',set]]);return set;
 }
 /* ========== 間違えた問題リスト ＝ おさらい(review) ==========
@@ -407,7 +443,7 @@ async function restoreReview(prev){if(prev)await commit([['review',{...prev,upda
 async function makeMistakeSet(){
   const list=(await getMistakes()).filter(x=>fits(byId[x.wordId]));
   if(!list.length)throw new Error('復習できる問題がありません。');
-  const mode=settings.qMode,N=settings.qCount;
+  const mode=quizMode(),N=settings.qCount;
   const day=JST(Date.now()),today=(await dbAll('sets')).filter(s=>s.day===day),id='mistake:'+day+':'+today.length,r=rng(id+':'+device);
   const used=new Set(today.filter(s=>s.kind==='mistake').flatMap(s=>s.items.map(i=>i.wordId))); // 今日まだ復習していない語を先に
   const picks=[...list.filter(x=>!used.has(x.wordId)),...list.filter(x=>used.has(x.wordId))].slice(0,N);
@@ -470,7 +506,7 @@ function show(name){stopSpeech();['home','play','result'].forEach(id=>{$(id).hid
 function focusHeading(c){const h=c.querySelector('h1,h2');if(h){h.tabIndex=-1;h.focus({preventScroll:true});}window.scrollTo(0,0);}
 function progress(set){
   const n=set.items.filter(i=>i.ans).length,c=node('div'),line=node('div',undefined,'topline');
-  line.append(node('span',set.day+(set.range?' ／ LEAP '+set.range.from+'〜'+set.range.to:'')+(set.kind==='mistake'?' の復習':' の'+set.items.length+'問')),node('span',n+' / '+set.items.length+' 回答済み'));
+  line.append(node('span',set.day+(set.range?' ／ LEAP '+set.range.from+'〜'+set.range.to:'')+(set.book?' ／ '+set.book.name:'')+(set.kind==='mistake'?' の復習':' の'+set.items.length+'問')),node('span',n+' / '+set.items.length+' 回答済み'));
   const bar=node('div',undefined,'progress'),fill=node('span');fill.style.width=(n/set.items.length*100)+'%';bar.append(fill);c.append(line,bar);return c;
 }
 function reviewText(rv,kind){
@@ -809,7 +845,7 @@ function renderResult(set){
   show('result');const area=$('result');area.replaceChildren();
   const fb=set.items.map(it=>({it,w:byId[it.wordId],a:it.ans})),ok=fb.filter(x=>x.a.correct).length;
   const head=node('div',undefined,'result-head');
-  head.append(node('h1',set.day+'　'+(set.range?'範囲練習':set.kind==='mistake'?'間違えた問題の復習':set.kind==='daily'?'今日の'+set.items.length+'問':'追加の'+set.items.length+'問')));
+  head.append(node('h1',set.day+'　'+(set.book?'単語帳「'+set.book.name+'」'+(set.range?'　LEAP '+set.range.from+'〜'+set.range.to:''):set.range?'範囲練習':set.kind==='mistake'?'間違えた問題の復習':set.kind==='daily'?'今日の'+set.items.length+'問':'追加の'+set.items.length+'問')));
   const sc=node('div',undefined,'score');sc.append(document.createTextNode(ok+' '),node('small','/ '+set.items.length+' 正解'));
   head.append(sc,node('p',''+Math.round(ok/set.items.length*100)+'%','muted'));area.append(head);
   if(window.AKUMA_SYNC&&AKUMA_SYNC.state.enabled){ // 同期が有効なら、5問終わった結果画面に順位と1つ上との差を出す（オフライン時は復帰後に自動表示）
@@ -833,10 +869,10 @@ function renderResult(set){
     more.addEventListener('click',()=>begin('mistake'));area.append(left,more);
     getMistakes().then(l=>{if(l.length){more.textContent='続けて復習する（リストに残り '+l.length+' 語）';more.hidden=false;}else left.textContent='復習リストは空になりました。';}).catch(()=>{});
   }else{
-    const more=node('button',set.range?'同じ範囲でもう'+settings.qCount+'問':'さらに進む','primary');more.type='button';
-    more.addEventListener('click',()=>begin(set.range?'range':'extra',set.range||{}));area.append(more);
-    const early=node('button','おさらいを先取りして、もう'+settings.qCount+'問','secondary');early.type='button';early.style.whiteSpace='pre-line';
-    early.addEventListener('click',()=>begin('early'));area.append(early);
+    const more=node('button',set.range?'同じ範囲でもう'+settings.qCount+'問':set.book?'同じ単語帳でもう'+settings.qCount+'問':'さらに進む','primary');more.type='button';
+    more.addEventListener('click',()=>begin(set.range?'range':set.book?'book':'extra',set.range?{from:set.range.from,to:set.range.to,book:set.book?set.book.id:undefined}:set.book?{book:set.book.id}:{}));area.append(more);
+    if(!set.book){const early=node('button','おさらいを先取りして、もう'+settings.qCount+'問','secondary');early.type='button';early.style.whiteSpace='pre-line';
+    early.addEventListener('click',()=>begin('early'));area.append(early);}
   }
   const back=node('button','トップに戻る','secondary');back.addEventListener('click',goHome);area.append(back);focusHeading(area);
 }
@@ -923,14 +959,14 @@ function portalLinkFromHash(){
 
 /* ========== 設定（すべて端末に保存。毎回上書き） ========== */
 const HINT_MAX=5;
-const MODES=['mixed','choice','typing'];
+const MODES=['mixed','choice','typing','card'];   // card = めくるカード（回答は記録しない）
 const CDIRS=['random','en2ja','ja2en'];   // 選択問題の向き
 const qOk=v=>Number.isSafeInteger(v)&&v>=1;   // 1回の問題数：1以上ならいくつでもよい（上限なし）
 const THEMES=['auto','light','dark'];   // 押すたびに Auto → Light → Dark
 const NIGHT_FROM=18,NIGHT_TO=6;         // 18:00〜翌6:00 はダーク（端末の時刻）
 const isNight=()=>{const h=new Date().getHours();return h>=NIGHT_FROM||h<NIGHT_TO;};
 const storedTheme=()=>{try{const t=localStorage.getItem('akuma_theme');if(THEMES.includes(t))return t;}catch{}return 'light';};
-let settings={hintLen:2,theme:'light',qMode:'mixed',cDir:'random',qCount:5,ttsRate:.86,ttsVoice:''};
+let settings={hintLen:2,theme:'light',qMode:'mixed',cDir:'random',qCount:5,ttsRate:.86,ttsVoice:'',bookId:''};
 async function loadSettings(){
   let st=null;try{st=await dbMeta('settings');}catch{}
   if(st&&typeof st==='object'){
@@ -938,29 +974,46 @@ async function loadSettings(){
     if(MODES.includes(st.qMode))settings.qMode=st.qMode;if(CDIRS.includes(st.cDir))settings.cDir=st.cDir;if(qOk(st.qCount))settings.qCount=st.qCount;
     if([.7,.86,1].includes(st.ttsRate))settings.ttsRate=st.ttsRate;if(typeof st.ttsVoice==='string'&&st.ttsVoice.length<=300)settings.ttsVoice=st.ttsVoice;
     if(THEMES.includes(st.theme))settings.theme=st.theme;
+    if(typeof st.bookId==='string'&&st.bookId.length<=80)settings.bookId=st.bookId;
     applyTheme(settings.theme);
   }else{settings.theme=storedTheme();applyTheme(settings.theme);}
   try{localStorage.setItem('akuma_theme',settings.theme);}catch{} // 起動直後のちらつき防止用に、テーマだけlocalStorageにも写す
 }
-function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,cDir:settings.cDir,qCount:settings.qCount,ttsRate:settings.ttsRate,ttsVoice:settings.ttsVoice,savedAt:Date.now()}).catch(()=>{});}
-const MODE_LABEL={mixed:'ランダム',choice:'選択のみ',typing:'綴りのみ'};
+function saveSettings(){return dbMeta('settings',{hintLen:settings.hintLen,theme:settings.theme,qMode:settings.qMode,cDir:settings.cDir,qCount:settings.qCount,ttsRate:settings.ttsRate,ttsVoice:settings.ttsVoice,bookId:settings.bookId,savedAt:Date.now()}).catch(()=>{});}
+const MODE_LABEL={mixed:'ランダム',choice:'選択のみ',typing:'綴りのみ',card:'カード'};
 function renderModeSeg(){
   const seg=$('modeSeg');if(!seg)return;seg.replaceChildren();
   MODES.forEach(m=>{const b=node('button',MODE_LABEL[m]);b.type='button';b.setAttribute('aria-pressed',String(settings.qMode===m));
-    b.addEventListener('click',()=>{settings.qMode=m;saveSettings();renderModeSeg();renderCDirSeg();renderMistakes();});seg.append(b);});
-  const nt=words.filter(w=>fits(w,'typing')).length,nc=words.filter(w=>fits(w,'choice')).length;
-  $('modeNote').textContent=settings.qMode==='mixed'?'選択問題と綴り問題がまざって出る。':
-    (words.length?(settings.qMode==='choice'?nc:nt)===words.length?'全 '+words.length+' 語が'+(settings.qMode==='choice'?'選択':'綴り')+'問題で出る。':(settings.qMode==='choice'?nc:nt)+' 語が'+(settings.qMode==='choice'?'選択':'綴り')+'問題で出る。':'');
+    b.addEventListener('click',()=>{settings.qMode=m;saveSettings();renderModeSeg();renderCDirSeg();renderMistakes();renderHero();updateStart();});seg.append(b);});
+  renderModeNote();
+}
+function renderModeNote(){   // 単語帳を選んでいるときは、その単語帳の語数で説明する
+  const bk=currentBook(),scope=bk?bk.wordIds.map(id=>byId[id]).filter(Boolean):words,m=settings.qMode;
+  const nt=scope.filter(w=>fits(w,'typing')).length,nc=scope.filter(w=>fits(w,'choice')).length,n=m==='choice'?nc:nt,kind=m==='choice'?'選択':'綴り';
+  $('modeNote').textContent=m==='card'?'カードをめくって覚える形式。LEAP番号の順に、対象の全部をめくる。タップすると答えが見える。答えは記録されず、おさらいやランキングには影響しない。'
+    :m==='mixed'?'選択問題と綴り問題がまざって出る。'
+    :!scope.length?'':n===scope.length?(bk?'単語帳の ':'全 ')+scope.length+' 語が'+kind+'問題で出る。':(bk?'単語帳の '+scope.length+' 語のうち ':'')+n+' 語が'+kind+'問題で出る。';
 }
 const CDIR_LABEL={random:'ランダム',en2ja:'英語→日本語',ja2en:'日本語→英語'};
 const CDIR_NOTE={random:'英語→日本語と日本語→英語がまざって出る。',en2ja:'英単語を見て、日本語の意味を選ぶ。',ja2en:'日本語の意味を見て、英単語を選ぶ。'};
+const CDIR_NOTE_CARD={random:'英単語が先に見える札と、日本語が先に見える札が、まざって出る。',en2ja:'英単語が先に見えて、タップすると日本語が出る。',ja2en:'日本語が先に見えて、タップすると英単語が出る。'};
 function renderCDirSeg(){
   const seg=$('cDirSeg');if(!seg)return;seg.replaceChildren();
   CDIRS.forEach(d=>{const b=node('button',CDIR_LABEL[d]);b.type='button';b.setAttribute('aria-pressed',String(settings.cDir===d));
     b.addEventListener('click',()=>{settings.cDir=d;saveSettings();renderCDirSeg();renderMistakes();});seg.append(b);});
-  $('cDirNote').textContent=CDIR_NOTE[settings.cDir]+(settings.qMode==='typing'?'（いまは「綴りのみ」なので、選択問題は出ない）':'');
+  $('cDirNote').textContent=(settings.qMode==='card'?CDIR_NOTE_CARD:CDIR_NOTE)[settings.cDir]+(settings.qMode==='typing'?'（いまは「綴りのみ」なので、選択問題は出ない）':'');
 }
-function renderHero(){$('heroTitle').textContent='今日の'+settings.qCount+'問';}
+function renderHero(){   // 対象の単語帳があれば、見出しに名前を出す（どの対象で動くかが分かるように）
+  const bk=currentBook(),n=bk?bk.wordIds.filter(x=>byId[x]).length:(words.length||2300);
+  const nm=bk?'「'+(bk.name.length>12?bk.name.slice(0,12)+'…':bk.name)+'」':'';
+  $('heroTitle').textContent=settings.qMode==='card'?(bk?nm+'全'+n+'枚':'カード 全'+n+'枚'):(bk?nm+'の'+settings.qCount+'問':'今日の'+settings.qCount+'問');
+}
+// 今日の途中の単語帳セットを続けてよいか。単語帳の語が入れ替わっていたり、語が増えて問題数が足りなくなっていたら、新しく作る
+function bookSetResumable(a,bk){
+  if(!a||!bk||isDone(a)||a.day!==JST(Date.now())||a.kind!=='book'||!a.book||a.book.id!==bk.id)return false;
+  const ids=new Set(bk.wordIds),fit=bk.wordIds.filter(id=>byId[id]&&fits(byId[id])).length;
+  return a.items.every(i=>ids.has(i.wordId))&&a.items.length>=Math.min(settings.qCount,fit);
+}
 function syncCountInput(){$('qCountIn').value=settings.qCount;}
 function bindCount(){
   const inp=$('qCountIn');syncCountInput();
@@ -1008,6 +1061,16 @@ async function importBackup(file){
     nr++;writes.push(['review',{wordId:r.wordId,stage:r.stage,status:r.status,nextDate:r.status==='ACTIVE'?r.nextDate:null,...(Number.isInteger(r.streak)?{streak:r.streak}:{}),updatedAt:r.updatedAt||0,dirty:0}]);
   }
   for(let i=0;i<writes.length;i+=500)await commit(writes.slice(i,i+500));
+  let nb=0;   // 単語帳：同じidは語を足し合わせる（消さない）。新しい名前は更新日時が新しい方
+  if(Array.isArray(j.books)){
+    const inc=normBooks({items:j.books}).items.slice(0,BOOK_MAX);
+    if(inc.length)await booksUpdate(items=>{for(const x of inc){
+      const cur=items.find(b=>b.id===x.id);
+      if(cur){const add=x.wordIds.filter(id=>!cur.wordIds.includes(id));
+        if(add.length||x.updatedAt>cur.updatedAt){cur.wordIds=[...cur.wordIds,...add];if(x.updatedAt>cur.updatedAt){cur.name=x.name;cur.updatedAt=x.updatedAt;}nb++;}}
+      else if(items.length<BOOK_MAX){items.push(x);nb++;}
+    }});
+  }
   const lr=j.lastRange;
   if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){await dbMeta('lastRange',{from:lr.from,to:lr.to,savedAt:Date.now()});$('rFrom').value=lr.from;$('rTo').value=lr.to;}
   const st=j.settings;
@@ -1019,19 +1082,23 @@ async function importBackup(file){
     await saveSettings();renderHintSeg();renderModeSeg();renderCDirSeg();syncCountInput();renderHero();renderTtsUI();
   }
   if(window.AKUMA_SYNC)AKUMA_SYNC.syncNow();   // 復元した回答の日別数もサーバーへ反映
-  return {na,nr};
+  return {na,nr,nb};
 }
 
 /* ========== 開始・トップ ========== */
 async function begin(kind,opts){
   try{
+    if(settings.qMode==='card'&&(kind==='daily'||kind==='range'||kind==='mistake'||kind==='book'))return await beginCards(kind,opts||{});   // カード形式：回答は記録しない
     let set;
     if(kind==='daily'){
       const active=await dbMeta('active'),a=active&&await dbGet('sets',active);
       set=a&&!isDone(a)&&a.day===JST(Date.now())?a:(await dbGet('sets','daily:'+JST(Date.now())))||await makeSet('daily');
       if(set.kind==='daily'&&set.items.every(i=>!i.ans)&&set.sig!==sigOf())set=await makeSet('daily'); // 設定を変えたら、未回答の今日の問題は作り直す
     }else if(kind==='mistake')set=await makeMistakeSet();
-    else set=await makeSet(kind,opts);
+    else if(kind==='book'){   // 単語帳：今日の途中のセットがあれば続きから、なければ新しく作る
+      const active=await dbMeta('active'),a=active&&await dbGet('sets',active);
+      set=bookSetResumable(a,bookById((opts||{}).book))?a:await makeSet('book',opts);
+    }else set=await makeSet(kind,opts);
     await dbMeta('active',set.id);
     play(set);
   }catch(e){setError(e.message||'開始できませんでした。');}
@@ -1045,10 +1112,20 @@ async function goHome(){
   applyIfIdle();
 }
 async function updateStart(){
-  const b=$('start'),active=await dbMeta('active'),s=active&&await dbGet('sets',active);
+  renderHero();renderModeNote();   // カード形式の枚数・説明は、対象（単語帳）の語数で変わる
+  const b=$('start'),note=$('startNote'),bk=currentBook(),card=settings.qMode==='card';
+  const parts=[];if(card)parts.push('カード形式');if(bk)parts.push('単語帳「'+bk.name+'」（'+bk.wordIds.length+'語）');
+  note.textContent=parts.join(' ／ ');note.hidden=!parts.length;   // 初期設定（クイズ・LEAP全体）のときは何も出さない
+  b.disabled=false;
+  if(card){b.textContent='カードを始める';b.onclick=()=>begin('daily');return;}
+  const active=await dbMeta('active'),s=active&&await dbGet('sets',active);
+  if(bk){
+    const open=bookSetResumable(s,bk);
+    b.textContent=open?'続きから':'始める';b.onclick=()=>begin('book',{book:bk.id});return;
+  }
   const open=s&&!isDone(s)&&s.day===JST(Date.now());
   const daily=await dbGet('sets','daily:'+JST(Date.now()));
-  b.disabled=false;b.textContent=open?'続きから':(daily&&isDone(daily)?'今日の結果':'始める');
+  b.textContent=open?'続きから':(daily&&isDone(daily)?'今日の結果':'始める');
   b.onclick=()=>open?begin('daily'):(daily&&isDone(daily)?renderResult(daily):begin('daily'));
 }
 /* ========== おさらいしたい単語の手動追加 ==========
@@ -1099,7 +1176,7 @@ async function renderMistakes(){
   box.replaceChildren();
   if(!list.length){box.append(node('p','間違えた問題はありません。間違えると、ここに溜まり、おさらいとして戻ってくる。上の欄から、おさらいしたい単語を自分で追加もできる。','mini'));return;}
   const can=list.filter(x=>fits(byId[x.wordId])).length;
-  if(can){const go=node('button','間違えた問題を復習する（'+Math.min(settings.qCount,can)+'問）','primary');go.type='button';go.addEventListener('click',()=>begin('mistake'));box.append(go);}
+  if(can){const go=node('button',settings.qMode==='card'?'間違えた語をカードでめくる（全'+list.length+'枚）':'間違えた問題を復習する（'+Math.min(settings.qCount,can)+'問）','primary');go.type='button';go.addEventListener('click',()=>begin('mistake'));box.append(go);}
   else box.append(node('p','いまの出題形式では復習できる語がありません。','mini'));
   const rows=node('div');box.append(rows);
   const drop=wordId=>async()=>{
@@ -1205,7 +1282,7 @@ async function renderHistory(){
   Object.keys(days).sort().reverse().slice(0,14).forEach(d=>box.append(row(d,days[d]+'回答')));
   const ex=node('button','回答データを書き出す（バックアップ）','secondary');ex.type='button';
   ex.addEventListener('click',async()=>{let lastRange=null;try{lastRange=await dbMeta('lastRange')||null;}catch{}
-    const blob=new Blob([JSON.stringify({version:1,device,lastRange,settings,answers:ans,review:rv},null,1)],{type:'application/json'}),a=node('a');
+    const blob=new Blob([JSON.stringify({version:1,device,lastRange,settings,answers:ans,review:rv,books},null,1)],{type:'application/json'}),a=node('a');
     a.href=URL.createObjectURL(blob);a.download='akuma-backup-'+JST(Date.now())+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
   const msg=node('p','','mini');msg.setAttribute('role','status');
   const imp=node('button','バックアップから復元する','secondary');imp.type='button';
@@ -1213,7 +1290,7 @@ async function renderHistory(){
   imp.addEventListener('click',()=>fi.click());
   fi.addEventListener('change',async()=>{const f=fi.files&&fi.files[0];fi.value='';if(!f)return;
     msg.textContent='復元中…';
-    try{const r=await importBackup(f);await renderHistory();renderMistakes();const m=$('hist').querySelector('p[role=status]');if(m)m.textContent='復元しました：回答 '+r.na+'件、おさらい '+r.nr+'語を追加・更新';refreshSync();}
+    try{const r=await importBackup(f);await renderHistory();renderMistakes();renderBooks();renderSrc();updateStart();const m=$('hist').querySelector('p[role=status]');if(m)m.textContent='復元しました：回答 '+r.na+'件、おさらい '+r.nr+'語を追加・更新'+(r.nb?'、単語帳 '+r.nb+'冊':'');refreshSync();}
     catch(e){msg.textContent=e.message||'復元できませんでした。';}});
   box.append(ex,imp,fi,msg);
 }
@@ -1224,6 +1301,245 @@ function applyTheme(t){if(!THEMES.includes(t))t='light';
   document.querySelector('meta[name=theme-color]').content=d?'#121212':'#fcfcfb';}
 function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
 
+/* ========== 自分の単語帳 ==========
+   端末内の meta ストアの 'books' に {v:1, items:[{id,name,wordIds,createdAt,updatedAt}]} として保存する。
+   ・新しいストアは作らない（IndexedDB は v1 のまま。いま使っている人の記録には触らない）。
+   ・読む→書く を1つのトランザクションで行うので、タブを複数開いていても、先の変更を消さない。
+   ・入れるのはLEAPの語（wordId）だけ。回答・おさらい・ランキングには関係しない。 */
+const BOOKS_KEY='books',BOOK_MAX=30,BOOK_NAME_MAX=30;
+let books=[];
+function normBooks(v){
+  const src=v&&Array.isArray(v.items)?v.items:[],seen=new Set(),items=[];
+  for(const b of src){
+    if(!b||typeof b.id!=='string'||!b.id||b.id.length>80||seen.has(b.id)||!Array.isArray(b.wordIds))continue;
+    seen.add(b.id);
+    items.push({id:b.id,name:String(b.name==null?'':b.name).trim().slice(0,BOOK_NAME_MAX)||'単語帳',
+      wordIds:[...new Set(b.wordIds.filter(x=>typeof x==='string'&&/^W\d{4}$/.test(x)))],
+      createdAt:Number.isFinite(b.createdAt)?b.createdAt:0,updatedAt:Number.isFinite(b.updatedAt)?b.updatedAt:0});
+  }
+  return {v:1,items};
+}
+const bookById=id=>books.find(b=>b.id===id)||null;
+const currentBook=()=>settings.bookId?bookById(settings.bookId):null;
+async function loadBooks(){
+  let ok=true;
+  try{books=normBooks(await dbMeta(BOOKS_KEY)).items;}catch{books=[];ok=false;}
+  if(ok&&settings.bookId&&!bookById(settings.bookId)){settings.bookId='';saveSettings();}   // 消えた単語帳を指していたら、LEAP全体に戻す
+}
+function booksUpdate(fn){   // fn(items) が items を書き換える。成功すると books も更新される
+  return idb.then(d=>new Promise((res,rej)=>{
+    const t=d.transaction('meta','readwrite'),s=t.objectStore('meta'),g=s.get(BOOKS_KEY);let out,cur=null;
+    g.onsuccess=()=>{try{cur=normBooks(g.result);out=fn(cur.items);s.put(cur,BOOKS_KEY);}catch(e){rej(e);try{t.abort();}catch{}}};
+    t.oncomplete=()=>{books=cur.items;res(out);};
+    t.onerror=t.onabort=()=>rej(t.error||new Error('保存に失敗しました'));
+  }));
+}
+const noBook=()=>new Error('単語帳が見つかりません。');
+const bookOp={
+  create:name=>booksUpdate(items=>{if(items.length>=BOOK_MAX)throw new Error('単語帳は'+BOOK_MAX+'冊までです。');const id=uuid(),t=Date.now();items.push({id,name,wordIds:[],createdAt:t,updatedAt:t});return id;}),
+  rename:(id,name)=>booksUpdate(items=>{const b=items.find(x=>x.id===id);if(!b)throw noBook();b.name=name;b.updatedAt=Date.now();}),
+  remove:id=>booksUpdate(items=>{const i=items.findIndex(x=>x.id===id);if(i>=0)items.splice(i,1);}),
+  add:(id,wid)=>booksUpdate(items=>{const b=items.find(x=>x.id===id);if(!b)throw noBook();if(!b.wordIds.includes(wid)){b.wordIds.push(wid);b.updatedAt=Date.now();}}),
+  drop:(id,wid)=>booksUpdate(items=>{const b=items.find(x=>x.id===id);if(b){b.wordIds=b.wordIds.filter(x=>x!==wid);b.updatedAt=Date.now();}})
+};
+// 学習設定の「出題の対象」
+function renderSrc(){
+  const sel=$('srcSel');if(!sel)return;sel.replaceChildren();
+  const o0=node('option','LEAP全体（今まで通り）');o0.value='';sel.append(o0);
+  books.forEach(b=>{const o=node('option','単語帳：'+b.name+'（'+b.wordIds.length+'語）');o.value=b.id;sel.append(o);});
+  sel.value=currentBook()?settings.bookId:'';
+  const bk=currentBook();
+  $('srcNote').textContent=bk
+    ?'「始める」・「範囲を決めて練習」・カードは、この単語帳の語だけから出る。「間違えた問題の復習」だけは、これまで通り間違えた語（単語帳の外も含む）から出る。'
+    :'LEAP全2300語から出る。「自分の単語帳」で作った単語帳を選ぶと、その語だけから出せる。';
+  const rn=$('rangeNote'),rg=$('rangeGo');
+  if(rn)rn.textContent=bk?'LEAP番号。単語帳「'+bk.name+'」の中の、この範囲の語から出る。':'LEAP番号。5語以上。';
+  if(rg)rg.textContent=bk?'この範囲で練習を始める（単語帳の中）':'この範囲で練習を始める';
+}
+const smUpdaters=new Map(),bookOpen=new Set(),bookShown={};
+const refreshBookRows=()=>smUpdaters.forEach(f=>f());
+function renderBooks(){
+  const box=$('bookList');if(!box)return;
+  $('bookSum').textContent=books.length?'　'+books.length+'冊':'';
+  box.replaceChildren();smUpdaters.clear();
+  if(!books.length){box.append(node('p','まだ単語帳がありません。上の欄で名前を付けて作ると、LEAPの語を好きなだけ入れられる。','mini'));return;}
+  books.forEach(b=>box.append(bookRow(b.id)));
+}
+function bookRow(id){
+  const row=node('details',undefined,'mrow'),sm=node('summary');row.append(sm);
+  let built=false,refreshUse=()=>{};
+  const setSm=()=>{const b=bookById(id);if(!b)return;sm.replaceChildren(document.createTextNode(b.name),node('small',b.wordIds.length+'語'+(settings.bookId===id?'・使用中':'')));};
+  setSm();smUpdaters.set(id,()=>{setSm();refreshUse();});
+  const build=()=>{
+    if(built)return;built=true;
+    const msg=node('p','','mini');msg.setAttribute('role','status');
+    const input=node('input',undefined,'typing');
+    Object.entries({type:'search',autocomplete:'off',autocapitalize:'none',spellcheck:'false',enterkeyhint:'search',maxLength:'60',placeholder:'追加する語：英単語・日本語の意味・LEAP番号','aria-label':'この単語帳に追加する語を探す',name:'b'+Math.random().toString(36).slice(2),'data-lpignore':'true','data-1p-ignore':'true'}).forEach(([k,v])=>input.setAttribute(k,v));
+    const out=node('div'),list=node('div');list.style.marginTop='18px';
+    const inBook=wid=>{const b=bookById(id);return !!b&&b.wordIds.includes(wid);};
+    const drawList=()=>{
+      const b=bookById(id);list.replaceChildren();if(!b)return;
+      const ids=b.wordIds.filter(x=>byId[x]).slice().reverse(),n=bookShown[id]||30;   // 新しく入れた語を上に
+      if(!ids.length){list.append(node('p','まだ語がありません。上の欄で探して追加してください。','mini'));return;}
+      list.append(node('p','入っている語（'+ids.length+'語）','label'));
+      ids.slice(0,n).forEach(wid=>{
+        const w=byId[wid],r=node('div',undefined,'add-row'),t=node('span',w.word);t.append(node('small','LEAP '+w.leapNo+'　'+w.meaning));
+        const x=node('button','外す','secondary');x.type='button';
+        x.addEventListener('click',async()=>{x.disabled=true;
+          try{await bookOp.drop(id,wid);msg.textContent='「'+w.word+'」を外しました。';drawList();search();setSm();renderSrc();$('bookSum').textContent=books.length?'　'+books.length+'冊':'';if(settings.bookId===id)updateStart();}
+          catch(e){msg.textContent=e.message||'保存できませんでした。';x.disabled=false;}});
+        r.append(t,x);list.append(r);
+      });
+      if(ids.length>n){const more=node('button','さらに表示（残り '+(ids.length-n)+' 語）','secondary');more.type='button';more.addEventListener('click',()=>{bookShown[id]=n+30;drawList();});list.append(more);}
+    };
+    const search=()=>{
+      out.replaceChildren();const q=input.value;if(!q.trim())return;
+      const hits=searchWords(q);
+      if(!hits.length){out.append(node('p','見つかりませんでした。','mini'));return;}
+      hits.slice(0,8).forEach(w=>{
+        const r=node('div',undefined,'add-row'),t=node('span',w.word);t.append(node('small','LEAP '+w.leapNo+'　'+w.meaning));
+        const on=inBook(w.wordId),b=node('button',on?'追加済み':'追加','secondary');b.type='button';b.disabled=on;
+        b.addEventListener('click',async()=>{b.disabled=true;
+          try{await bookOp.add(id,w.wordId);b.textContent='追加済み';msg.textContent='「'+w.word+'」を追加しました。';drawList();setSm();renderSrc();if(settings.bookId===id)updateStart();}
+          catch(e){msg.textContent=e.message||'保存できませんでした。';b.disabled=false;}});
+        r.append(t,b);out.append(r);
+      });
+      if(hits.length>8)out.append(node('p','ほかに '+(hits.length-8)+' 件。もう少し絞ってください。','mini'));
+    };
+    input.addEventListener('input',()=>{msg.textContent='';search();});
+    const use=node('button','','secondary');use.type='button';
+    refreshUse=()=>{use.textContent=settings.bookId===id?'出題に使うのをやめる（LEAP全体に戻す）':'この単語帳を出題に使う（クイズ・カード）';};refreshUse();
+    use.addEventListener('click',()=>{settings.bookId=settings.bookId===id?'':id;saveSettings();renderSrc();refreshBookRows();updateStart();});
+    const ren=node('button','名前を変更','secondary');ren.type='button';
+    ren.addEventListener('click',async()=>{
+      const b=bookById(id);if(!b)return;
+      const v=prompt('単語帳の名前（'+BOOK_NAME_MAX+'文字まで）',b.name);if(v===null)return;
+      const nm=v.trim().slice(0,BOOK_NAME_MAX);if(!nm){msg.textContent='名前を入れてください。';return;}
+      try{await bookOp.rename(id,nm);setSm();renderSrc();msg.textContent='名前を変更しました。';if(settings.bookId===id)updateStart();}
+      catch(e){msg.textContent=e.message||'保存できませんでした。';}});
+    const del=node('button','この単語帳を削除','secondary');del.type='button';
+    del.addEventListener('click',async()=>{
+      const b=bookById(id);if(!b)return;
+      if(!confirm('単語帳「'+b.name+'」（'+b.wordIds.length+'語）を削除しますか？\n回答の記録・おさらいは消えません。'))return;
+      try{await bookOp.remove(id);}catch(e){msg.textContent=e.message||'削除できませんでした。';return;}
+      if(settings.bookId===id){settings.bookId='';saveSettings();}
+      bookOpen.delete(id);renderBooks();renderSrc();updateStart();});
+    row.append(input,out,msg,list,use,ren,del);
+    drawList();
+  };
+  row.addEventListener('toggle',()=>{if(row.open){bookOpen.add(id);build();}else bookOpen.delete(id);});
+  if(bookOpen.has(id)){row.open=true;build();}
+  return row;
+}
+function bindBooks(){
+  const form=$('bookForm'),inp=$('bookName'),msg=$('bookMsg');if(!form)return;
+  form.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const nm=inp.value.trim().slice(0,BOOK_NAME_MAX);if(!nm){msg.textContent='名前を入れてください。';inp.focus();return;}
+    try{const id=await bookOp.create(nm);inp.value='';bookOpen.add(id);msg.textContent='「'+nm+'」を作りました。下の一覧で開いて、語を追加してください。';renderBooks();renderSrc();}
+    catch(err){msg.textContent=err.message||'保存できませんでした。';}
+  });
+  $('srcSel').addEventListener('change',()=>{settings.bookId=$('srcSel').value;saveSettings();renderSrc();refreshBookRows();updateStart();});
+}
+
+/* ========== カード（めくる形式） ==========
+   1枚ずつ出て、英単語か日本語のどちらかが隠れている。タップすると見える。
+   ・回答は記録しない（answers・review・ランキングの回答数には一切入れない）。保存もしない（画面を閉じれば終わり）。
+   ・出す語は、「単語帳 / LEAP全体 / 範囲を決めて練習 / 間違えた語」。向きは選択問題と共通の設定（cDir）。
+   ・順番はLEAP番号の昇順。枚数は対象の全部（「1回の問題数」の設定には関係しない）。 */
+let cardCur=null;
+async function beginCards(kind,opts){
+  let pool,key,title;
+  if(kind==='range'){const lo=opts.from||1,hi=opts.to||2300,bk=opts.book?bookById(opts.book):null;if(opts.book&&!bk)throw new Error('単語帳が見つかりません。');
+    pool=words.filter(w=>w.leapNo>=lo&&w.leapNo<=hi);key='range:'+lo+'-'+hi;title='LEAP '+lo+'〜'+hi;
+    if(bk){const ids=new Set(bk.wordIds);pool=pool.filter(w=>ids.has(w.wordId));key+='@'+bk.id;title='単語帳「'+bk.name+'」 LEAP '+lo+'〜'+hi;}
+    if(!pool.length)throw new Error('この範囲には、単語帳の語がありません。');}
+  else if(kind==='mistake'){pool=(await getMistakes()).map(x=>byId[x.wordId]);key='mistake';title='間違えた語';if(!pool.length)throw new Error('間違えた語がありません。');}
+  else{
+    const bk=opts.book?bookById(opts.book):currentBook();
+    if(bk){pool=bk.wordIds.map(id=>byId[id]).filter(Boolean);key='book:'+bk.id;title='単語帳「'+bk.name+'」';
+      if(!pool.length)throw new Error('この単語帳にはまだ語がありません。「自分の単語帳」から追加してください。');}
+    else{pool=words;key='leap';title='LEAP全体';}
+  }
+  const sorted=pool.slice().sort((a,b)=>a.leapNo-b.leapNo),r=rng(uuid()),dir=settings.cDir;   // LEAP番号の順に、全部
+  cardCur={kind,opts,key,title,idx:0,items:sorted.map(w=>w.wordId).map(wordId=>({wordId,front:dir==='en2ja'?'en':dir==='ja2en'?'ja':(r()<.5?'en':'ja'),shown:false}))};
+  renderCard();
+}
+function renderCard(){
+  const s=cardCur;if(!s)return goHome();
+  if(s.idx>=s.items.length)return renderCardEnd();
+  show('play');
+  const area=$('play'),it=s.items[s.idx],w=byId[it.wordId],front=it.front,n=s.items.length,pw=String(n).length,last=s.idx===n-1;
+  area.replaceChildren();
+  const line=node('div',undefined,'topline'),bar=node('div',undefined,'progress'),fill=node('span');
+  line.append(node('span','カード ／ '+s.title),node('span','LEAP '+w.leapNo));
+  fill.style.width=(s.idx/n*100)+'%';bar.append(fill);
+  const head=node('div',undefined,'qhead');head.style.margin='24px 0 0';
+  head.append(node('span',String(s.idx+1).padStart(pw,'0')+' / '+String(n).padStart(pw,'0')),node('span',front==='en'?'英語 → 日本語':'日本語 → 英語','chip'));
+  area.append(line,bar,head);
+
+  const face=node('div',undefined,'flip'+(it.shown?'':' tappable'));
+  if(front==='en')face.append(node('p','ENGLISH','face-label'),node('p',w.word,'face-main'),node('p','LEAP '+w.leapNo,'face-sub'));
+  else face.append(node('p','日本語','face-label'),node('p',w.maskedMeaning||w.meaning,'face-main ja'),node('p',w.pos+'　LEAP '+w.leapNo,'face-sub'));   // 意味に答えの英語が入る語は伏せ字（出題と同じ）
+  const main=node('div',undefined,'cardmain');main.append(face);
+  if(front==='en'){   // 英単語が見えているときだけ、めくる前でも発音を聞ける
+    const row=node('div',undefined,'audio-controls'),msg=node('p','','mini'),b=node('button','単語を聞く','secondary');
+    b.type='button';msg.setAttribute('role','status');b.addEventListener('click',()=>speak(w.word,msg));row.append(b);main.append(row,msg);
+  }
+  const holder=node('div');holder.setAttribute('aria-live','polite');
+  const showAnswer=()=>{
+    holder.replaceChildren();face.classList.remove('tappable');
+    if(front==='en'){
+      const a=node('div',undefined,'flip answer');
+      a.append(node('p','日本語','face-label'),node('p',w.meaning,'face-main ja'),node('p',w.pos,'face-sub'));
+      holder.append(a,learningBlock(w,false,false));
+    }else holder.append(headword(w,'英単語'),learningBlock(w,false,true));
+  };
+  const reveal=()=>{if(it.shown)return;it.shown=true;showAnswer();};
+  const next=()=>{s.idx++;renderCard();},prev=()=>{if(s.idx>0){s.idx--;renderCard();}};
+  s.api={next,prev,reveal,isShown:()=>it.shown};   // キーボード操作用
+  const hid=node('button',front==='en'?'タップして日本語を見る':'タップして英単語を見る','reveal-btn');hid.type='button';
+  hid.addEventListener('click',reveal);face.addEventListener('click',reveal);
+  if(it.shown)showAnswer();else holder.append(hid);
+  main.append(holder);
+
+  // 左右に大きな前後ボタン（スクロールしても画面の中ほどに付いてくる）
+  const pb=node('button','‹','sidebtn prev'),nb=node('button',last?'終':'›','sidebtn next');
+  pb.type=nb.type='button';pb.setAttribute('aria-label','前のカード');nb.setAttribute('aria-label',last?'終わる（まとめを見る）':'次のカード');
+  pb.disabled=s.idx===0;pb.addEventListener('click',prev);nb.addEventListener('click',next);
+  const rowEl=node('div',undefined,'cardrow');rowEl.append(pb,main,nb);area.append(rowEl);
+  // 左右にスワイプしても前後できる
+  let tx=0,ty=0;
+  rowEl.addEventListener('touchstart',e=>{const t=e.touches[0];tx=t.clientX;ty=t.clientY;},{passive:true});
+  rowEl.addEventListener('touchend',e=>{const t=e.changedTouches[0],dx=t.clientX-tx,dy=t.clientY-ty;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5){if(dx<0)next();else prev();}},{passive:true});
+
+  area.append(node('p','カードをタップで答え。左右のボタン・スワイプ・矢印キー（Space で「答え→次へ」）でも進める。','mini'));
+  const back=node('button','トップに戻る','back-link');back.type='button';back.addEventListener('click',goHome);area.append(back);
+  window.scrollTo(0,0);
+}
+function bindCards(){
+  document.addEventListener('keydown',e=>{
+    const s=cardCur;if(!s||!s.api||$('play').hidden||e.metaKey||e.ctrlKey||e.altKey)return;
+    const t=e.target&&e.target.tagName;if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA')return;
+    if(e.key==='ArrowRight'){e.preventDefault();s.api.next();}
+    else if(e.key==='ArrowLeft'){e.preventDefault();s.api.prev();}
+    else if((e.key===' '||e.key==='Enter')&&(!t||t==='BODY')){e.preventDefault();if(s.api.isShown())s.api.next();else s.api.reveal();}
+  });
+}
+function renderCardEnd(){
+  const s=cardCur;show('result');const area=$('result');area.replaceChildren();
+  const head=node('div',undefined,'result-head');head.append(node('h1','カード　'+s.title));
+  const sc=node('div',undefined,'score');sc.append(document.createTextNode(s.items.length+' '),node('small','枚'));
+  head.append(sc,node('p','答えは記録されません。おさらい・ランキングにも影響しません。','muted'));area.append(head);
+  const rc=node('div',undefined,'card result-card');rc.append(node('h2','めくった語を見返す'));
+  s.items.forEach(it=>{const w=byId[it.wordId],d=node('details');d.append(node('summary',w.word+'　'+w.meaning),learningBlock(w));rc.append(d);});
+  area.append(rc);
+  const more=node('button','最初からもう一度','primary');more.type='button';
+  more.addEventListener('click',()=>begin(s.kind==='range'?'range':s.kind==='mistake'?'mistake':'daily',s.opts));area.append(more);
+  const back=node('button','トップに戻る','secondary');back.type='button';back.addEventListener('click',goHome);area.append(back);
+  focusHeading(area);
+}
+
 /* ========== 起動 ========== */
 (async function init(){
   setToday();applyTheme(storedTheme());
@@ -1231,14 +1547,15 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
   const tick=()=>{if(settings.theme==='auto')applyTheme('auto');};   // Autoのときは、時刻が変わったら自動で切り替える
   setInterval(tick,60*1000);document.addEventListener('visibilitychange',tick);addEventListener('pageshow',tick);
   addEventListener('online',netLabel);addEventListener('offline',netLabel);netLabel();
-  $('rangeForm').addEventListener('submit',e=>{e.preventDefault();const f=+$('rFrom').value,t=+$('rTo').value;
-    if(!Number.isInteger(f)||!Number.isInteger(t)||f<1||t>2300||t-f<4)return setError('LEAP番号1〜2300で、5語以上の範囲を指定してください。');
+  $('rangeForm').addEventListener('submit',e=>{e.preventDefault();const f=+$('rFrom').value,t=+$('rTo').value,bk=currentBook();   // 単語帳を選んでいるときは、その中の語だけ（5語以上の制限はなし）
+    if(!Number.isInteger(f)||!Number.isInteger(t)||f<1||t>2300||(bk?t<f:t-f<4))return setError(bk?'LEAP番号1〜2300で、開始が終了以下になる範囲を指定してください。':'LEAP番号1〜2300で、5語以上の範囲を指定してください。');
+    if(bk&&!bk.wordIds.some(id=>byId[id]&&byId[id].leapNo>=f&&byId[id].leapNo<=t))return setError('この範囲には、単語帳「'+bk.name+'」の語がありません。');
     dbMeta('lastRange',{from:f,to:t,savedAt:Date.now()}).catch(()=>{}); // 選んだ範囲を端末に保存（毎回上書き）
-    begin('range',{from:f,to:t});});
+    begin('range',bk?{from:f,to:t,book:bk.id}:{from:f,to:t});});
   $('rankBtn').addEventListener('click',async()=>{const btn=$('rankBtn');btn.disabled=true;try{await showRankInto($('rank'));}finally{btn.disabled=false;}});
   $('rankBox').addEventListener('toggle',()=>{if($('rankBox').open)showRankInto($('rank'));});
   addEventListener('online',()=>{const b=$('resultRank');if(b&&b.isConnected&&!$('result').hidden)showRankInto(b);});
-  bindLink();portalLinkFromHash();addEventListener('hashchange',portalLinkFromHash);initNews();
+  bindLink();portalLinkFromHash();addEventListener('hashchange',portalLinkFromHash);initNews();bindBooks();bindCards();
   $('histBox').addEventListener('toggle',()=>{if($('histBox').open)renderHistory();});
   $('worstBox').addEventListener('toggle',()=>{if($('worstBox').open)renderWorst();});
   try{
@@ -1248,7 +1565,7 @@ function netLabel(){$('net').textContent=navigator.onLine?'':'オフライン';}
     device=await dbMeta('device');if(!device){device=uuid();await dbMeta('device',device);}
     try{const lr=await dbMeta('lastRange');if(lr&&Number.isInteger(lr.from)&&Number.isInteger(lr.to)){$('rFrom').value=lr.from;$('rTo').value=lr.to;}}catch{} // 前回選んだ範囲を復元
     await loadSettings();renderHintSeg();renderModeSeg();renderCDirSeg();bindCount();renderHero();bindTts();
-    await loadWords();setupReviewAdd();renderModeSeg();renderCDirSeg();await updateStart();refreshSync();renderMistakes();
+    await loadWords();await loadBooks();setupReviewAdd();renderSrc();renderBooks();renderModeSeg();renderCDirSeg();renderHero();await updateStart();refreshSync();renderMistakes();
     if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
   }catch(e){$('start').textContent='開始できません';setError(e.message||'起動に失敗しました。');}
 })();
