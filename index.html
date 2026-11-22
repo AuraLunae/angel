@@ -669,7 +669,11 @@ function initNews(){
   const renderInfo=()=>{
     if(!ibox)return;
     ibox.replaceChildren();
-    const gone=new Set(readGone()),list=(infos||[]).filter(i=>!gone.has(i.id)&&!hiddenNow.has(i.id));
+    // 日付が1か月より前のお知らせは出さない（日付が無い or 読めないお知らせは、ずっと出す）。リリースノートには関係しない
+    const cutoff=(()=>{const d=new Date(JST(Date.now())+'T00:00:00Z'),day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()-1);
+      d.setUTCDate(Math.min(day,new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate()));return d.toISOString().slice(0,10);})();
+    const fresh=i=>!(typeof i.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(i.date)&&i.date<cutoff);
+    const gone=new Set(readGone()),list=(infos||[]).filter(i=>fresh(i)&&!gone.has(i.id)&&!hiddenNow.has(i.id));
     list.forEach(i=>{
       const item=node('div',undefined,'info-item'),top=node('div',undefined,'info-top'),close=node('button','非表示にする','info-close');
       close.type='button';
